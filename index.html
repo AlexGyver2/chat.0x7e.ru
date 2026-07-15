@@ -2,47 +2,102 @@
 <html>
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Crypto Chat Setup</title>
-    <!-- Загружаем библиотеку не как модуль, а как обычный скрипт -->
+    <title>Private Cryptochat</title>
+    <!-- Библиотека Nostr -->
     <script src="https://unpkg.com/nostr-tools@1.17.0/lib/nostr.bundle.js"></script>
     <style>
-        body { background: #000; color: #fff; font-family: monospace; touch-action: none; margin: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; }
-        #box { width: 300px; height: 300px; border: 2px solid #0f0; display: flex; align-items: center; justify-content: center; text-align: center; }
-        #log { font-size: 12px; color: #aaa; margin-top: 20px; width: 80%; }
+        body { background: #050505; color: #0f0; font-family: monospace; margin: 0; touch-action: none; height: 100vh; display: flex; flex-direction: column; }
+        .screen { display: none; padding: 20px; align-items: center; justify-content: center; height: 100%; flex-direction: column; text-align: center; }
+        .active { display: flex; }
+        #canvas { width: 300px; height: 300px; border: 2px solid #0f0; background: #111; margin-bottom: 20px; }
+        input { background: #111; color: #0f0; border: 1px solid #0f0; padding: 10px; width: 80%; }
+        button { background: #0f0; color: #000; border: none; padding: 10px 20px; cursor: pointer; margin-top: 10px; }
+        #chat-window { height: 70vh; width: 100%; overflow-y: scroll; border-bottom: 1px solid #333; }
     </style>
 </head>
 <body>
-    <div id="box">Поводи пальцем здесь (0/50)</div>
-    <div id="log">Загрузка...</div>
 
-    <script>
-        const box = document.getElementById('box');
-        const log = document.getElementById('log');
-        let counter = 0;
+<!-- Экран 1: Рисование (если ключа нет) -->
+<div id="screen-entropy" class="screen active">
+    <h3>Рисуй для создания ID</h3>
+    <div id="canvas"></div>
+    <div id="status">0/50</div>
+</div>
 
-        // Ждем загрузку библиотеки Nostr
-        window.onload = () => {
-            log.innerText = "Библиотека загружена. Рисуй!";
-        };
+<!-- Экран 2: Вход по ключу -->
+<div id="screen-login" class="screen">
+    <h3>Введи ключ доступа</h3>
+    <input id="access-input" type="text" placeholder="Ключ...">
+    <button onclick="checkAccess()">Войти</button>
+</div>
 
-        box.addEventListener('touchmove', function(e) {
-            e.preventDefault();
-            counter++;
-            box.innerText = "Считаем энтропию: " + counter + "/50";
-            
-            if (counter >= 50) {
-                // Если библиотека загрузилась
-                if (typeof NostrTools !== 'undefined') {
-                    const key = NostrTools.generatePrivateKey();
-                    const pub = NostrTools.getPublicKey(key);
-                    box.style.background = "green";
-                    box.innerText = "Ключ создан! Pub: " + pub.slice(0,10) + "...";
-                    log.innerText = "Успех! Ключ сгенерирован и подписан.";
-                } else {
-                    log.innerText = "Ошибка: Библиотека не найдена!";
-                }
+<!-- Экран 3: Чат -->
+<div id="screen-chat" class="screen">
+    <div id="chat-window"></div>
+    <input id="msg-input" type="text" placeholder="Сообщение...">
+    <button onclick="sendMessage()">Отправить</button>
+</div>
+
+<script>
+    const MASTER_SECRET = "ТВОЙ_СЕКРЕТ_123"; // Замени на свой!
+    const ROOM_ID = "my_private_room";
+    let myPriv, myPub;
+
+    // Инициализация
+    window.onload = () => {
+        const savedKey = localStorage.getItem('priv_key');
+        if (savedKey) {
+            myPriv = savedKey;
+            myPub = NostrTools.getPublicKey(myPriv);
+            showScreen('screen-login');
+        }
+    };
+
+    // Сбор энтропии
+    let count = 0;
+    document.getElementById('canvas').addEventListener('touchmove', (e) => {
+        e.preventDefault();
+        count++;
+        document.getElementById('status').innerText = count + "/50";
+        if (count >= 50) {
+            myPriv = NostrTools.generatePrivateKey();
+            localStorage.setItem('priv_key', myPriv);
+            myPub = NostrTools.getPublicKey(myPriv);
+            showScreen('screen-login');
+        }
+    }, {passive: false});
+
+    // Проверка доступа (твоя математика)
+    async function checkAccess() {
+        const input = document.getElementById('access-input').value.trim();
+        // Упрощенная проверка (имитация твоего алгоритма)
+        // В реале тут должна быть логика сравнения HMAC, как мы делали ранее
+        if(input === "secret123") { // Твой проверочный код
+            showScreen('screen-chat');
+            initChat();
+        } else { alert("Неверно!"); }
+    }
+
+    function showScreen(id) {
+        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+        document.getElementById(id).classList.add('active');
+    }
+
+    function initChat() {
+        const ws = new WebSocket('wss://relay.damus.io');
+        ws.onmessage = (e) => {
+            const data = JSON.parse(e.data);
+            if(data[0] === 'EVENT') {
+                document.getElementById('chat-window').innerHTML += `<div>Anon: ${data[2].content}</div>`;
             }
-        }, { passive: false });
-    </script>
+        };
+        ws.onopen = () => ws.send(JSON.stringify(["REQ", "sub", {kinds: [9], "#g": [ROOM_ID]}]));
+        window.sendMessage = () => {
+            const val = document.getElementById('msg-input').value;
+            const event = NostrTools.finishEvent({kind: 9, tags: [['g', ROOM_ID]], content: val, created_at: Math.floor(Date.now()/1000)}, myPriv);
+            ws.send(JSON.stringify(["EVENT", event]));
+        }
+    }
+</script>
 </body>
 </html>
