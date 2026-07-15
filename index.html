@@ -1,103 +1,241 @@
 <!DOCTYPE html>
-<html>
+<html lang="ru">
 <head>
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Private Cryptochat</title>
-    <!-- Библиотека Nostr -->
+    <title>Crypto Portal</title>
     <script src="https://unpkg.com/nostr-tools@1.17.0/lib/nostr.bundle.js"></script>
     <style>
-        body { background: #050505; color: #0f0; font-family: monospace; margin: 0; touch-action: none; height: 100vh; display: flex; flex-direction: column; }
-        .screen { display: none; padding: 20px; align-items: center; justify-content: center; height: 100%; flex-direction: column; text-align: center; }
-        .active { display: flex; }
-        #canvas { width: 300px; height: 300px; border: 2px solid #0f0; background: #111; margin-bottom: 20px; }
-        input { background: #111; color: #0f0; border: 1px solid #0f0; padding: 10px; width: 80%; }
-        button { background: #0f0; color: #000; border: none; padding: 10px 20px; cursor: pointer; margin-top: 10px; }
-        #chat-window { height: 70vh; width: 100%; overflow-y: scroll; border-bottom: 1px solid #333; }
+        body { background: #050505; color: #0f0; font-family: monospace; padding: 20px; margin: 0; }
+        .box { max-width: 500px; margin: 40px auto; padding: 20px; border: 2px solid #0f0; background: #111; text-align: center; }
+        input, select { background: #000; color: #0f0; border: 1px solid #0f0; padding: 10px; width: 100%; box-sizing: border-box; margin-bottom: 10px; }
+        button { background: #0f0; color: #000; border: none; padding: 10px 20px; cursor: pointer; width: 100%; font-weight: bold; margin-top: 5px; }
+        .hidden { display: none !important; }
+        #chat-layout { display: flex; height: 80vh; margin-top: 20px; border: 1px solid #333; }
+        #sidebar { width: 200px; border-right: 1px solid #333; padding: 10px; }
+        #chat-area { flex: 1; display: flex; flex-direction: column; }
+        #messages { flex: 1; overflow-y: scroll; padding: 10px; background: #0a0a0a; }
+        .room-item { padding: 8px; cursor: pointer; border: 1px dashed #333; margin-bottom: 5px; }
+        .room-item.active { background: #0f0; color: #000; }
+        .locked { color: #ff3333; }
     </style>
 </head>
 <body>
 
-<!-- Экран 1: Рисование (если ключа нет) -->
-<div id="screen-entropy" class="screen active">
-    <h3>Рисуй для создания ID</h3>
-    <div id="canvas"></div>
-    <div id="status">0/50</div>
-</div>
+    <!-- Шаг 1: Общий вход на сайт -->
+    <div id="step-site-auth" class="box">
+        <h3>🔑 Вход на Портал</h3>
+        <p>Введите общий ключ шифрования сайта:</p>
+        <input id="site-password" type="password" placeholder="Общий пароль...">
+        <button onclick="unlockSite()">Войти</button>
+        <div id="site-error" style="color:red; margin-top:10px;"></div>
+    </div>
 
-<!-- Экран 2: Вход по ключу -->
-<div id="screen-login" class="screen">
-    <h3>Введи ключ доступа</h3>
-    <input id="access-input" type="text" placeholder="Ключ...">
-    <button onclick="checkAccess()">Войти</button>
-</div>
+    <!-- Шаг 2: Интерфейс приложения (доступен после ввода общего ключа) -->
+    <div id="app-interface" class="hidden">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #0f0; padding-bottom: 10px;">
+            <h2>Secure Nostr Portal</h2>
+            <div>
+                <span id="user-status">Гость (Только общий чат)</span>
+                <button id="btn-activate" style="width: auto; margin: 0 0 0 10px; padding: 5px 10px;" onclick="showActivationForm()">Активировать индивидуальный ключ</button>
+            </div>
+        </div>
 
-<!-- Экран 3: Чат -->
-<div id="screen-chat" class="screen">
-    <div id="chat-window"></div>
-    <input id="msg-input" type="text" placeholder="Сообщение...">
-    <button onclick="sendMessage()">Отправить</button>
-</div>
+        <!-- Окно активации индивидуального ключа -->
+        <div id="activation-modal" class="box hidden" style="position: absolute; left: 50%; top: 20%; transform: translate(-50%, 0); z-index: 100;">
+            <h3>🔑 Активация доступа</h3>
+            <p>Вставьте ваш индивидуальный зашифрованный ключ:</p>
+            <textarea id="ind-key-input" rows="4" style="width:100%; background:#000; color:#0f0; border:1px solid #0f0;"></textarea>
+            <button onclick="activateIndividualKey()">Применить ключ</button>
+            <button onclick="document.getElementById('activation-modal').classList.add('hidden')" style="background:#555; color:#fff;">Отмена</button>
+        </div>
 
-<script>
-    const MASTER_SECRET = "ТВОЙ_СЕКРЕТ_123"; // Замени на свой!
-    const ROOM_ID = "my_private_room";
-    let myPriv, myPub;
+        <!-- Сетка чата -->
+        <div id="chat-layout">
+            <div id="sidebar">
+                <h4>Комнаты</h4>
+                <div id="room-list">
+                    <div class="room-item active" onclick="switchRoom('general')"># general (Общий)</div>
+                    <!-- Приватные комнаты -->
+                    <div id="room-r1" class="room-item locked" onclick="switchRoom('room1')">🔒 Комната 1</div>
+                    <div id="room-r2" class="room-item locked" onclick="switchRoom('room2')">🔒 Комната 2</div>
+                    <div id="room-r3" class="room-item locked" onclick="switchRoom('room3')">🔒 Комната 3</div>
+                </div>
+            </div>
+            <div id="chat-area">
+                <div id="messages"></div>
+                <div style="padding: 10px; display: flex; gap: 10px;">
+                    <input id="msg-input" placeholder="Сообщение..." style="margin:0;">
+                    <button onclick="sendMsg()" style="width:100px; margin:0;">Отправить</button>
+                </div>
+            </div>
+        </div>
+    </div>
 
-    // Инициализация
-    window.onload = () => {
-        const savedKey = localStorage.getItem('priv_key');
-        if (savedKey) {
-            myPriv = savedKey;
-            myPub = NostrTools.getPublicKey(myPriv);
-            showScreen('screen-login');
-        }
-    };
+    <script>
+        // Конфигурация шифрования общего доступа к сайту
+        const SITE_HASH = "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918"; // SHA-256 хэш от пароля "admin123" (для теста)
+        
+        // Мастер-ключ администратора, которым ты шифруешь индивидуальные пропуска
+        // В продакшене лучше сделать его сложным
+        const MASTER_SECRET_KEY = "MY_ADMIN_SECRET_KEY_999"; 
 
-    // Сбор энтропии
-    let count = 0;
-    document.getElementById('canvas').addEventListener('touchmove', (e) => {
-        e.preventDefault();
-        count++;
-        document.getElementById('status').innerText = count + "/50";
-        if (count >= 50) {
-            myPriv = NostrTools.generatePrivateKey();
-            localStorage.setItem('priv_key', myPriv);
-            myPub = NostrTools.getPublicKey(myPriv);
-            showScreen('screen-login');
-        }
-    }, {passive: false});
-
-    // Проверка доступа (твоя математика)
-    async function checkAccess() {
-        const input = document.getElementById('access-input').value.trim();
-        // Упрощенная проверка (имитация твоего алгоритма)
-        // В реале тут должна быть логика сравнения HMAC, как мы делали ранее
-        if(input === "secret123") { // Твой проверочный код
-            showScreen('screen-chat');
-            initChat();
-        } else { alert("Неверно!"); }
-    }
-
-    function showScreen(id) {
-        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-        document.getElementById(id).classList.add('active');
-    }
-
-    function initChat() {
-        const ws = new WebSocket('wss://relay.damus.io');
-        ws.onmessage = (e) => {
-            const data = JSON.parse(e.data);
-            if(data[0] === 'EVENT') {
-                document.getElementById('chat-window').innerHTML += `<div>Anon: ${data[2].content}</div>`;
-            }
+        let currentUser = {
+            privKey: null,
+            pubKey: null,
+            allowedRooms: ['general'] // По умолчанию доступен только общий чат
         };
-        ws.onopen = () => ws.send(JSON.stringify(["REQ", "sub", {kinds: [9], "#g": [ROOM_ID]}]));
-        window.sendMessage = () => {
-            const val = document.getElementById('msg-input').value;
-            const event = NostrTools.finishEvent({kind: 9, tags: [['g', ROOM_ID]], content: val, created_at: Math.floor(Date.now()/1000)}, myPriv);
-            ws.send(JSON.stringify(["EVENT", event]));
+        
+        let currentRoom = 'general';
+        let socket;
+
+        // 1. Проверка общего пароля сайта
+        async function unlockSite() {
+            const pass = document.getElementById('site-password').value;
+            const err = document.getElementById('site-error');
+            
+            // Вычисляем хэш введенного пароля
+            const msgUint8 = new TextEncoder().encode(pass);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
+            if (hashHex === SITE_HASH) {
+                document.getElementById('step-site-auth').classList.add('hidden');
+                document.getElementById('app-interface').classList.remove('remove', 'hidden');
+                
+                // Генерируем временную гостевую личность в памяти
+                currentUser.privKey = NostrTools.generatePrivateKey();
+                currentUser.pubKey = NostrTools.getPublicKey(currentUser.privKey);
+                
+                initNostr();
+            } else {
+                err.innerText = "Неверный ключ доступа к сайту!";
+            }
         }
-    }
-</script>
+
+        // 2. Дешифрование индивидуального ключа пользователя
+        async function activateIndividualKey() {
+            const encryptedKeyBase64 = document.getElementById('ind-key-input').value.trim();
+            
+            try {
+                // Декодируем и расшифровываем данные ключа с помощью MASTER_SECRET_KEY
+                const decryptedDataStr = await decryptAES(encryptedKeyBase64, MASTER_SECRET_KEY);
+                const parsed = JSON.parse(decryptedDataStr); // Формат: { priv: "...", rooms: ["room1", "room2"] }
+
+                if (parsed.priv && parsed.rooms) {
+                    currentUser.privKey = parsed.priv;
+                    currentUser.pubKey = NostrTools.getPublicKey(currentUser.privKey);
+                    currentUser.allowedRooms = ['general', ...parsed.rooms];
+                    
+                    // Обновляем статус в интерфейсе
+                    document.getElementById('user-status').innerText = `ID: ${currentUser.pubKey.slice(0,8)}... (Доступно комнат: ${currentUser.allowedRooms.length})`;
+                    document.getElementById('activation-modal').classList.add('hidden');
+                    document.getElementById('btn-activate').innerText = "Ключ активен ✓";
+                    
+                    // Обновляем визуальный статус комнат в меню
+                    currentUser.allowedRooms.forEach(room => {
+                        const el = document.getElementById(`room-${room === 'room1' ? 'r1' : room === 'room2' ? 'r2' : room === 'room3' ? 'r3' : ''}`);
+                        if (el) {
+                            el.classList.remove('locked');
+                            el.innerText = `# ${room}`;
+                        }
+                    });
+
+                    alert("Индивидуальный ключ успешно применен!");
+                    switchRoom('general'); // Перезагружаем чат
+                } else {
+                    throw new Error("Неверная структура ключа");
+                }
+            } catch(e) {
+                alert("Ошибка активации: Неверный ключ или поврежденные данные!");
+                console.error(e);
+            }
+        }
+
+        function showActivationForm() {
+            document.getElementById('activation-modal').classList.remove('hidden');
+        }
+
+        // 3. Логика переключения комнат
+        function switchRoom(roomName) {
+            if (!currentUser.allowedRooms.includes(roomName)) {
+                alert("У вас нет доступа к этой комнате! Требуется индивидуальный ключ.");
+                return;
+            }
+            currentRoom = roomName;
+            document.querySelectorAll('.room-item').forEach(el => el.classList.remove('active'));
+            
+            // Подсветка активной комнаты в меню
+            if (roomName === 'general') {
+                document.querySelector('.room-item').classList.add('active');
+            } else {
+                const map = { 'room1': 'room-r1', 'room2': 'room-r2', 'room3': 'room-r3' };
+                document.getElementById(map[roomName]).classList.add('active');
+            }
+
+            document.getElementById('messages').innerHTML = `<div>--- Вход в комнату ${roomName} ---</div>`;
+            // Переподписываемся на события в Nostr для новой комнаты
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify(["CLOSE", "sub_channel"]));
+                socket.send(JSON.stringify(["REQ", "sub_channel", { kinds: [9], "#g": [roomName], limit: 40 }]));
+            }
+        }
+
+        // 4. Сетевая работа с Nostr
+        function initNostr() {
+            socket = new WebSocket('wss://relay.damus.io');
+            socket.onopen = () => {
+                socket.send(JSON.stringify(["REQ", "sub_channel", { kinds: [9], "#g": [currentRoom], limit: 40 }]));
+            };
+            socket.onmessage = (e) => {
+                const data = JSON.parse(e.data);
+                if (data[0] === 'EVENT' && data[1] === 'sub_channel') {
+                    const event = data[2];
+                    const msgDiv = document.createElement('div');
+                    msgDiv.style.marginBottom = "5px";
+                    msgDiv.innerHTML = `<span style="color:#888;">[${event.pubkey.slice(0,6)}]:</span> ${event.content}`;
+                    document.getElementById('messages').appendChild(msgDiv);
+                    const box = document.getElementById('messages');
+                    box.scrollTop = box.scrollHeight;
+                }
+            };
+        }
+
+        function sendMsg() {
+            const input = document.getElementById('msg-input');
+            const text = input.value.trim();
+            if(!text) return;
+
+            const event = NostrTools.finishEvent({
+                kind: 9,
+                tags: [['g', currentRoom]],
+                content: text,
+                created_at: Math.floor(Date.now() / 1000)
+            }, currentUser.privKey);
+
+            socket.send(JSON.stringify(["EVENT", event]));
+            input.value = "";
+        }
+
+        // --- Вспомогательные крипто-функции (AES-GCM-256) ---
+        async function getDerivationKey(secret) {
+            const encoder = new TextEncoder();
+            const keyMaterial = await crypto.subtle.importKey("raw", encoder.encode(secret), "PBKDF2", false, ["deriveKey"]);
+            return await crypto.subtle.deriveKey(
+                { name: "PBKDF2", salt: encoder.encode("salt-token-123"), iterations: 50000, hash: "SHA-256" },
+                keyMaterial, { name: "AES-GCM", length: 256 }, false, ["decrypt"]
+            );
+        }
+
+        async function decryptAES(base64Data, secret) {
+            const key = await getDerivationKey(secret);
+            const combined = new Uint8Array(atob(base64Data).split("").map(c => c.charCodeAt(0)));
+            const iv = combined.slice(0, 12);
+            const ciphertext = combined.slice(12);
+            const decrypted = await crypto.subtle.decrypt({ name: "AES-GCM", iv: iv }, key, ciphertext);
+            return new TextDecoder().decode(decrypted);
+        }
+    </script>
 </body>
 </html>
