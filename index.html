@@ -1,0 +1,2022 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Векторная викторина — игра по векторной геометрии</title>
+<!--
+  ============================================================================
+  ВЕКТОРНАЯ ВИКТОРИНА — обучающая игра-конструктор по векторной геометрии.
+  Один автономный файл: работает офлайн, без внешних библиотек и шрифтов.
+
+  Ученик решает 10 задач, строя ответ прямо на доске: рисует векторы,
+  передвигает их, копирует и разворачивает противоположно. Задачи — сумма
+  (правило треугольника/многоугольника), разность и умножение на число.
+  Подход чисто геометрический: никаких координат и числовых подписей,
+  только сетка-миллиметровка как вспомогательный чертёжный инструмент.
+
+  Как добавить вопрос / включить координатный метод — см. комментарий
+  «РАСШИРЕНИЕ» в начале скрипта ниже.
+  ============================================================================
+-->
+<style>
+:root{
+  --bg:#eef1f6; --card:#ffffff; --ink:#0f172a; --muted:#64748b;
+  --primary:#4f46e5; --primary-dark:#3730a3; --violet:#7c3aed;
+  --ok:#059669; --ok-bg:#ecfdf5; --ok-line:#a7f3d0;
+  --bad:#e11d48; --bad-bg:#fff1f2; --bad-line:#fecdd3;
+  --gold:#d97706; --line:#e2e8f0; --soft:#f8fafc;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  background:linear-gradient(180deg,#eef2f7,#e9edf5) fixed;
+  color:var(--ink); -webkit-font-smoothing:antialiased; user-select:none;
+}
+.hidden{display:none !important}
+b.v, .v{font-family:Georgia,"Times New Roman",serif;font-style:italic;font-weight:700}
+kbd{
+  font:600 11px/1.4 inherit; background:#f1f5f9; border:1px solid #dbe3ec;
+  border-bottom-width:2px; border-radius:6px; padding:1px 7px; color:var(--muted);
+}
+button{font-family:inherit}
+.ic{
+  width:18px;height:18px;flex:none;
+  stroke:currentColor;fill:none;stroke-width:2;
+  stroke-linecap:round;stroke-linejoin:round;
+}
+
+/* ---------- Экраны ---------- */
+.screen{display:none}
+.screen.active{display:block; animation:fadeUp .35s ease both}
+#screen-quiz.active{display:flex;flex-direction:column;min-height:100vh}
+@keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@keyframes popIn{from{opacity:0;transform:scale(.94)}to{opacity:1;transform:scale(1)}}
+
+/* ---------- Верхняя панель ---------- */
+.topbar{
+  position:sticky;top:0;z-index:20; display:flex;align-items:center;gap:16px;
+  padding:10px 20px; background:rgba(255,255,255,.92); backdrop-filter:blur(8px);
+  border-bottom:1px solid var(--line);
+}
+.brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:16px;white-space:nowrap}
+.brand .logo{width:30px;height:30px;flex:none}
+.dots{display:flex;gap:6px;margin-left:auto}
+.dot{
+  width:22px;height:22px;border-radius:50%; background:#e2e8f0; color:#94a3b8;
+  font:700 11px/22px inherit; text-align:center; transition:.25s; flex:none;
+}
+.dot.cur{background:var(--primary);color:#fff;box-shadow:0 0 0 4px rgba(79,70,229,.18)}
+.dot.done{background:var(--ok);color:#fff}
+.chip{
+  background:#eef2ff;color:var(--primary-dark); border-radius:999px;
+  padding:6px 14px; font-weight:700; font-size:13px; white-space:nowrap;
+}
+.chip.pop{animation:popIn .35s ease}
+.icon-btn{
+  width:38px;height:38px;border-radius:11px;border:1px solid var(--line);
+  background:#fff;color:#475569;display:inline-flex;align-items:center;justify-content:center;
+  cursor:pointer;transition:.15s;flex:none;
+}
+.icon-btn:hover{border-color:#cbd5e1;background:var(--soft);transform:translateY(-1px)}
+
+/* ---------- Раскладка ---------- */
+.layout{
+  display:grid; grid-template-columns:330px minmax(0,1fr); gap:18px;
+  width:100%; max-width:1400px; margin:0 auto; padding:18px 20px 30px;
+  align-items:start; flex:1;
+}
+.side{display:flex;flex-direction:column;gap:14px;min-width:0}
+
+/* ---------- Карточка вопроса ---------- */
+.qcard{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:18px;box-shadow:0 6px 24px rgba(15,23,42,.06)}
+.qmeta{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+.qnum{font:700 12px/1 inherit;color:var(--muted);letter-spacing:.4px;text-transform:uppercase}
+.badge{
+  background:linear-gradient(135deg,#4f46e5,#7c3aed); color:#fff; font-weight:700;
+  font-size:12px; padding:5px 11px; border-radius:999px; white-space:nowrap;
+}
+#q-title{font-size:19px;margin:2px 0 8px}
+#q-text{font-size:14.5px;line-height:1.62;color:#334155}
+#q-tools{
+  margin-top:12px;padding-top:12px;border-top:1px dashed var(--line);
+  font-size:12.5px;color:var(--muted);line-height:1.9;
+}
+#q-tools .t{display:inline-flex;align-items:center;gap:4px;margin-right:10px;white-space:nowrap;color:#475569;font-weight:600}
+#q-tools .ic{width:14px;height:14px}
+
+/* ---------- Панель инструментов ---------- */
+.toolbar{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:10px;display:grid;gap:6px;box-shadow:0 6px 24px rgba(15,23,42,.06)}
+.tool-btn{
+  display:grid;grid-template-columns:20px 1fr auto;align-items:center;gap:10px;
+  width:100%;padding:9px 12px;border-radius:12px;border:1px solid transparent;
+  background:transparent;color:#334155;font-size:13.5px;font-weight:600;cursor:pointer;transition:.15s;text-align:left;
+}
+.tool-btn:hover{background:var(--soft)}
+.tool-btn.active{background:#eef2ff;border-color:#c7d2fe;color:var(--primary-dark)}
+.tool-btn.disabled{opacity:.4;cursor:not-allowed}
+.tool-btn .ic{width:18px;height:18px}
+.toolbar-title{font:700 11px/1 inherit;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;padding:4px 12px 2px}
+
+/* ---------- Кнопки действий ---------- */
+.actions{display:grid;gap:8px}
+.actions .row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  padding:10px 14px;border-radius:12px;border:1px solid var(--line);
+  background:#fff;color:#334155;font-weight:700;font-size:13.5px;cursor:pointer;transition:.15s;
+}
+.btn:hover{border-color:#cbd5e1;background:var(--soft);transform:translateY(-1px)}
+.btn:active{transform:none}
+.btn .ic{width:16px;height:16px}
+.btn.primary{
+  border:none;color:#fff;padding:13px;font-size:15px;
+  background:linear-gradient(135deg,#4f46e5,#7c3aed);
+  box-shadow:0 8px 20px rgba(79,70,229,.35);
+}
+.btn.primary:hover{filter:brightness(1.06)}
+.btn.small{padding:8px 13px;font-size:12.5px;border-radius:10px}
+.btn.suggest{animation:glow 1.3s ease-in-out infinite}
+@keyframes glow{0%,100%{box-shadow:0 0 0 0 rgba(245,158,11,.45)}50%{box-shadow:0 0 0 7px rgba(245,158,11,0)}}
+.linklike{background:none;border:none;color:var(--primary);font-weight:700;font-size:12.5px;cursor:pointer;padding:2px 0;text-decoration:underline;text-underline-offset:3px}
+
+/* ---------- Подсказки ---------- */
+.hints{display:flex;flex-direction:column;gap:8px}
+.hint-item{
+  display:flex;gap:10px;background:#fffbeb;border:1px solid #fde68a;border-radius:12px;
+  padding:10px 12px;font-size:13px;line-height:1.55;color:#713f12;animation:popIn .3s ease;
+}
+.hint-item .ic{width:16px;height:16px;flex:none;margin-top:2px;color:#d97706}
+
+/* ---------- Обратная связь ---------- */
+#feedback{min-height:10px}
+.fb{border-radius:14px;padding:13px 15px;font-size:14px;line-height:1.6;animation:popIn .3s ease;border:1px solid}
+.fb .fb-head{display:flex;align-items:center;gap:8px;font-weight:800;font-size:15px;margin-bottom:6px}
+.fb .ic{width:18px;height:18px;flex:none}
+.fb.ok{background:var(--ok-bg);border-color:var(--ok-line);color:#065f46}
+.fb.bad{background:var(--bad-bg);border-color:var(--bad-line);color:#9f1239}
+.fb .fb-actions{display:flex;gap:10px;align-items:center;margin-top:11px;flex-wrap:wrap}
+.fb .chain{margin-top:8px;font-weight:700}
+
+/* ---------- Доска ---------- */
+.board-wrap{
+  position:relative;background:var(--card);border:1px solid var(--line);border-radius:18px;
+  padding:14px;box-shadow:0 6px 24px rgba(15,23,42,.06);
+}
+#board{
+  display:block;width:100%;height:auto;border-radius:12px;background:#fdfdff;
+  border:1px solid #e8ecf3;touch-action:none;cursor:default;
+}
+.board-foot{
+  display:flex;align-items:center;justify-content:space-between;gap:14px;
+  margin-top:11px;font-size:12px;color:var(--muted);flex-wrap:wrap;
+}
+.switch{display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-weight:600;color:#475569}
+.switch input{display:none}
+.switch .sl{
+  width:34px;height:20px;border-radius:999px;background:#cbd5e1;position:relative;transition:.2s;flex:none;
+}
+.switch .sl::after{
+  content:'';position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;
+  background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:.2s;
+}
+.switch input:checked + .sl{background:var(--primary)}
+.switch input:checked + .sl::after{left:16px}
+.kbd-hints{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+
+/* ---------- Тост ---------- */
+.toast{
+  position:absolute;left:50%;bottom:64px;transform:translate(-50%,8px);
+  background:rgba(15,23,42,.88);color:#fff;font-size:13px;font-weight:600;
+  padding:9px 16px;border-radius:999px;opacity:0;pointer-events:none;transition:.25s;
+  max-width:86%;text-align:center;z-index:5;
+}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+
+/* ---------- Модальное окно теории ---------- */
+.modal{position:fixed;inset:0;z-index:50;display:none;align-items:center;justify-content:center;padding:22px}
+.modal.open{display:flex}
+.modal .overlay{position:absolute;inset:0;background:rgba(15,23,42,.45)}
+.modal .box{
+  position:relative;background:#fff;border-radius:20px;max-width:760px;width:100%;
+  max-height:88vh;overflow:auto;padding:26px 28px;animation:popIn .25s ease;
+}
+.modal h2{font-size:20px;margin-bottom:4px}
+.modal .sub{color:var(--muted);font-size:13.5px;margin-bottom:16px}
+.m-block{
+  display:grid;grid-template-columns:230px 1fr;gap:14px;align-items:center;
+  background:var(--soft);border:1px solid var(--line);border-radius:14px;padding:13px;margin-bottom:12px;
+}
+.m-block h3{font-size:14.5px;margin-bottom:6px}
+.m-block p{font-size:13px;line-height:1.6;color:#475569}
+.m-block svg{width:100%;height:auto}
+.modal .close{position:absolute;top:14px;right:14px}
+
+/* ---------- Стартовый экран ---------- */
+#screen-start{min-height:100vh;display:none;align-items:center;justify-content:center;padding:26px}
+#screen-start.active{display:flex}
+.start-card{
+  max-width:640px;width:100%;background:var(--card);border:1px solid var(--line);
+  border-radius:24px;padding:38px 40px;box-shadow:0 18px 50px rgba(15,23,42,.12);text-align:center;
+}
+.start-card .hero{width:min(370px,88%);margin:0 auto 6px;display:block}
+.start-card h1{font-size:27px;margin-bottom:8px}
+.start-card .tagline{color:var(--muted);font-size:15px;line-height:1.6;margin-bottom:20px}
+.rules{list-style:none;text-align:left;margin:0 auto 24px;max-width:480px;display:grid;gap:11px}
+.rules li{position:relative;padding-left:30px;font-size:14px;line-height:1.55;color:#334155}
+.rules li::before{
+  content:'';position:absolute;left:4px;top:7px;width:9px;height:9px;border-radius:50%;
+  background:linear-gradient(135deg,#4f46e5,#7c3aed);
+}
+.start-best{margin-top:14px;font-size:13px;color:var(--muted);font-weight:600}
+
+/* ---------- Финальный экран ---------- */
+#screen-end{min-height:100vh;display:none;align-items:center;justify-content:center;padding:26px}
+#screen-end.active{display:flex}
+.end-card{
+  max-width:620px;width:100%;background:var(--card);border:1px solid var(--line);border-radius:24px;
+  padding:34px 36px;box-shadow:0 18px 50px rgba(15,23,42,.12);text-align:center;
+}
+.ring{position:relative;width:132px;height:132px;margin:0 auto 14px}
+.ring svg{transform:rotate(-90deg)}
+.ring .val{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.ring .val b{font-size:30px}
+.ring .val span{font-size:11.5px;color:var(--muted);font-weight:700}
+#end-grade{font-size:21px;font-weight:800;margin-bottom:4px}
+#end-msg{color:var(--muted);font-size:14px;margin-bottom:20px}
+.ktable{margin:0 6px 22px;text-align:left}
+.krow{display:grid;grid-template-columns:34px 1fr 92px 64px;gap:6px;align-items:center;padding:8px 10px;border-radius:10px;font-size:13px}
+.krow.head{color:#94a3b8;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.4px}
+.krow:nth-child(even){background:var(--soft)}
+.krow .pts{font-weight:800;color:var(--primary-dark);text-align:right}
+.krow .att{color:var(--muted);text-align:right}
+.krow .st{font-weight:700;text-align:center}
+.end-best{margin-top:14px;font-size:12.5px;color:var(--muted);font-weight:600}
+
+/* ---------- Адаптивность ---------- */
+@media (max-width:1020px){
+  .layout{grid-template-columns:1fr}
+  .board-wrap{order:-1}
+  .dots{display:none}
+}
+@media (max-width:640px){
+  .layout{padding:12px}
+  .qcard,.toolbar,.board-wrap{padding:13px}
+  .actions .row{grid-template-columns:1fr 1fr}
+  .actions .row .btn:last-child{grid-column:span 2}
+  .m-block{grid-template-columns:1fr}
+  .kbd-hints{display:none}
+  .brand span{display:none}
+}
+</style>
+</head>
+<body>
+
+<!-- ===== Спрайт SVG-иконок ===== -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-move" viewBox="0 0 24 24"><polyline points="9 5 12 2 15 5"/><polyline points="9 19 12 22 15 19"/><polyline points="5 9 2 12 5 15"/><polyline points="19 9 22 12 19 15"/><line x1="12" y1="2" x2="12" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/></symbol>
+    <symbol id="i-pencil" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
+    <symbol id="i-flip" viewBox="0 0 24 24"><polyline points="8 3 4 7 8 11"/><line x1="4" y1="7" x2="20" y2="7"/><polyline points="16 21 20 17 16 13"/><line x1="20" y1="17" x2="4" y2="17"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></symbol>
+    <symbol id="i-undo" viewBox="0 0 24 24"><polyline points="9 14 4 9 9 4"/><path d="M4 9h10a6 6 0 0 1 6 6v1"/></symbol>
+    <symbol id="i-clear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9 9l6 6"/><path d="M15 9l-6 6"/></symbol>
+    <symbol id="i-bulb" viewBox="0 0 24 24"><path d="M9 18h6"/><path d="M10 21h4"/><path d="M12 3a6 6 0 0 0-4 10.2c.6.6 1 1.3 1 1.8h6c0-.5.4-1.2 1-1.8A6 6 0 0 0 12 3z"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></symbol>
+    <symbol id="i-arrow-r" viewBox="0 0 24 24"><line x1="4" y1="12" x2="19" y2="12"/><polyline points="13 5 20 12 13 19"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><polygon points="6 4 20 12 6 20" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-vol" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" stroke="none"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></symbol>
+    <symbol id="i-vol-off" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" stroke="none"/><line x1="16" y1="9" x2="22" y2="15"/><line x1="22" y1="9" x2="16" y2="15"/></symbol>
+  </defs>
+</svg>
+
+<div id="app">
+
+  <!-- ===== Стартовый экран ===== -->
+  <section id="screen-start" class="screen active">
+    <div class="start-card">
+      <!-- Правило треугольника: a + b = сумма -->
+      <svg class="hero" viewBox="0 0 370 150" aria-hidden="true">
+        <defs>
+          <marker id="hr" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto"><path d="M0 0L10 5L0 10z" fill="#dc2626"/></marker>
+          <marker id="hb" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto"><path d="M0 0L10 5L0 10z" fill="#2563eb"/></marker>
+          <marker id="hg" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10z" fill="#d97706"/></marker>
+        </defs>
+        <line x1="40" y1="115" x2="212" y2="115" stroke="#d97706" stroke-width="5" stroke-dasharray="10 8" marker-end="url(#hg)"/>
+        <line x1="40" y1="115" x2="182" y2="52" stroke="#dc2626" stroke-width="4.5" marker-end="url(#hr)"/>
+        <line x1="182" y1="52" x2="212" y2="115" stroke="#2563eb" stroke-width="4.5" marker-end="url(#hb)"/>
+        <circle cx="40" cy="115" r="5" fill="#dc2626"/>
+        <text x="100" y="78" font-family="Georgia,serif" font-style="italic" font-weight="700" font-size="21" fill="#dc2626">a</text>
+        <text x="203" y="80" font-family="Georgia,serif" font-style="italic" font-weight="700" font-size="21" fill="#2563eb">b</text>
+        <text x="118" y="105" font-family="Georgia,serif" font-style="italic" font-weight="700" font-size="21" fill="#d97706">a + b</text>
+        <text x="40" y="145" font-family="Georgia,serif" font-size="15" fill="#64748b">правило треугольника</text>
+      </svg>
+      <h1>Векторная викторина</h1>
+      <p class="tagline">Игра-конструктор по векторной геометрии: стройте суммы, разности
+        и умножение вектора на число прямо на доске — рисуя и передвигая векторы.</p>
+      <ul class="rules">
+        <li><b>10 заданий</b> — от разминки с равным вектором до финального испытания 2<i class="v">a</i>−<i class="v">b</i>.</li>
+        <li><b>Стройте на доске</b>: рисуйте векторы, передвигайте, копируйте и разворачивайте их противоположно — как на уроке геометрии.</li>
+        <li><b>Очки</b>: первая попытка — 10 очков, вторая — 7, далее — 5. Подсказки бесплатные, эталонное построение — 2 очка.</li>
+        <li><b>Справочник</b> с теорией и картинками всегда под рукой — если забудете правило треугольника.</li>
+      </ul>
+      <button id="btn-start" class="btn primary"><svg class="ic"><use href="#i-play"/></svg>Начать игру</button>
+      <div class="start-best" id="start-best"></div>
+    </div>
+  </section>
+
+  <!-- ===== Экран викторины ===== -->
+  <section id="screen-quiz" class="screen">
+    <header class="topbar">
+      <div class="brand">
+        <svg class="logo" viewBox="0 0 30 30" aria-hidden="true">
+          <defs><marker id="lg1" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="#dc2626"/></marker>
+          <marker id="lg2" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="#d97706"/></marker></defs>
+          <line x1="5" y1="24" x2="24" y2="7" stroke="#dc2626" stroke-width="3" marker-end="url(#lg1)"/>
+          <line x1="5" y1="24" x2="25" y2="24" stroke="#d97706" stroke-width="3" stroke-dasharray="4 3" marker-end="url(#lg2)"/>
+        </svg>
+        <span>Векторная викторина</span>
+      </div>
+      <div class="dots" id="q-dots"></div>
+      <div class="chip" id="score-chip">Очки: <span id="score-val">0</span></div>
+      <button class="icon-btn" id="btn-theory" title="Справочник по теории (клавиша T)"><svg class="ic"><use href="#i-book"/></svg></button>
+      <button class="icon-btn" id="btn-mute" title="Звук вкл/выкл (клавиша M)">
+        <svg class="ic" id="ic-vol-on"><use href="#i-vol"/></svg>
+        <svg class="ic hidden" id="ic-vol-off"><use href="#i-vol-off"/></svg>
+      </button>
+    </header>
+
+    <main class="layout">
+      <!-- Левая колонка: вопрос, инструменты, действия -->
+      <aside class="side">
+        <div class="qcard">
+          <div class="qmeta">
+            <span class="qnum">Вопрос <span id="q-num">1</span> из 10</span>
+            <span class="badge" id="q-badge">Разминка</span>
+          </div>
+          <h2 id="q-title"></h2>
+          <p id="q-text"></p>
+          <div id="q-tools"></div>
+        </div>
+
+        <div class="toolbar">
+          <div class="toolbar-title">Инструменты</div>
+          <button class="tool-btn" data-tool="move" title="Перетаскивайте векторы; за круглые точки — менять концы">
+            <svg class="ic"><use href="#i-move"/></svg><span>Перемещать</span><kbd>1</kbd>
+          </button>
+          <button class="tool-btn" data-tool="draw" title="Рисование нового вектора: нажмите и протяните">
+            <svg class="ic"><use href="#i-pencil"/></svg><span>Рисовать</span><kbd>2</kbd>
+          </button>
+          <button class="tool-btn" data-tool="copy" title="Копия вектора — для построения цепочек">
+            <svg class="ic"><use href="#i-copy"/></svg><span>Копировать</span><kbd>3</kbd>
+          </button>
+          <button class="tool-btn" data-tool="negate" title="Противоположный вектор (−a)">
+            <svg class="ic"><use href="#i-flip"/></svg><span>Развернуть</span><kbd>4</kbd>
+          </button>
+          <button class="tool-btn" data-tool="erase" title="Удалить вектор">
+            <svg class="ic"><use href="#i-trash"/></svg><span>Удалить</span><kbd>5</kbd>
+          </button>
+        </div>
+
+        <div class="actions">
+          <div class="row">
+            <button class="btn small" id="btn-hint" title="Открыть следующую подсказку (клавиша H)"><svg class="ic"><use href="#i-bulb"/></svg>Подсказка</button>
+            <button class="btn small" id="btn-undo" title="Отменить последнее действие (Ctrl+Z)"><svg class="ic"><use href="#i-undo"/></svg>Отменить</button>
+            <button class="btn small" id="btn-clear" title="Убрать все построения и вернуть векторы на место"><svg class="ic"><use href="#i-clear"/></svg>Очистить</button>
+          </div>
+          <button class="btn primary" id="btn-check"><svg class="ic"><use href="#i-check"/></svg>Проверить</button>
+        </div>
+
+        <div class="hints" id="hints"></div>
+        <div id="feedback"></div>
+      </aside>
+
+      <!-- Доска -->
+      <div class="board-wrap">
+        <canvas id="board" width="960" height="560"></canvas>
+        <div class="toast" id="toast"></div>
+        <div class="board-foot">
+          <label class="switch" title="Концы рисуемых векторов прилипают к узлам сетки — так построения получаются точными">
+            <input type="checkbox" id="snap" checked><span class="sl"></span>Привязка к сетке
+          </label>
+          <div class="kbd-hints">
+            <span><kbd>1</kbd>–<kbd>5</kbd> инструменты</span>
+            <span><kbd>Enter</kbd> проверить</span>
+            <span><kbd>Ctrl</kbd>+<kbd>Z</kbd> отменить</span>
+          </div>
+        </div>
+      </div>
+    </main>
+  </section>
+
+  <!-- ===== Финальный экран ===== -->
+  <section id="screen-end" class="screen">
+    <div class="end-card">
+      <div class="ring">
+        <svg width="132" height="132" viewBox="0 0 132 132">
+          <circle cx="66" cy="66" r="58" fill="none" stroke="#e2e8f0" stroke-width="11"/>
+          <circle id="ring-fill" cx="66" cy="66" r="58" fill="none" stroke="#4f46e5" stroke-width="11"
+                  stroke-linecap="round" stroke-dasharray="364.4" stroke-dashoffset="364.4"
+                  style="transition:stroke-dashoffset 1.2s ease"/>
+        </svg>
+        <div class="val"><b id="end-score">0</b><span>из 100</span></div>
+      </div>
+      <div id="end-grade"></div>
+      <div id="end-msg"></div>
+      <div class="ktable" id="end-table"></div>
+      <button class="btn primary" id="btn-restart"><svg class="ic"><use href="#i-play"/></svg>Играть снова</button>
+      <div class="end-best" id="end-best"></div>
+    </div>
+  </section>
+
+</div>
+
+<!-- ===== Справочник: краткая теория ===== -->
+<div class="modal" id="modal-theory">
+  <div class="overlay" data-close></div>
+  <div class="box">
+    <button class="icon-btn close" data-close title="Закрыть (Esc)"><svg class="ic"><use href="#i-x"/></svg></button>
+    <h2>Справочник по векторам</h2>
+    <p class="sub">Всё, что нужно для викторины — без координат, чисто геометрически.</p>
+
+    <div class="m-block">
+      <svg viewBox="0 0 230 120">
+        <defs>
+          <marker id="tr" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#dc2626"/></marker>
+          <marker id="tb" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#2563eb"/></marker>
+          <marker id="tg" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#d97706"/></marker>
+        </defs>
+        <line x1="25" y1="95" x2="90" y2="45" stroke="#dc2626" stroke-width="4" marker-end="url(#tr)"/>
+        <line x1="140" y1="95" x2="205" y2="45" stroke="#dc2626" stroke-width="4" marker-end="url(#tr)"/>
+        <circle cx="25" cy="95" r="4" fill="#dc2626"/><circle cx="140" cy="95" r="4" fill="#dc2626"/>
+        <text x="50" y="60" font-family="Georgia,serif" font-style="italic" font-weight="700" font-size="17" fill="#dc2626">a</text>
+        <text x="165" y="60" font-family="Georgia,serif" font-style="italic" font-weight="700" font-size="17" fill="#dc2626">a</text>
+        <text x="113" y="75" font-size="19" font-weight="700" fill="#334155">=</text>
+      </svg>
+      <div>
+        <h3>Вектор и равенство векторов</h3>
+        <p>Вектор — это направленный отрезок: у него есть начало, конец, длина и направление.
+        Два вектора равны, если они <b>сонаправлены</b> и равны по длине. Вектор можно переносить
+        параллельно самому себе — он останется тем же вектором. Именно поэтому на доске векторы
+        можно свободно передвигать.</p>
+      </div>
+    </div>
+
+    <div class="m-block">
+      <svg viewBox="0 0 230 120">
+        <line x1="25" y1="100" x2="160" y2="100" stroke="#d97706" stroke-width="4" stroke-dasharray="9 7" marker-end="url(#tg)"/>
+        <line x1="25" y1="100" x2="115" y2="35" stroke="#dc2626" stroke-width="4" marker-end="url(#tr)"/>
+        <line x1="115" y1="35" x2="160" y2="100" stroke="#2563eb" stroke-width="4" marker-end="url(#tb)"/>
+        <circle cx="25" cy="100" r="4" fill="#dc2626"/>
+        <text x="62" y="60" font-family="Georgia,serif" font-style="italic" font-weight="700" font-size="17" fill="#dc2626">a</text>
+        <text x="142" y="60" font-family="Georgia,serif" font-style="italic" font-weight="700" font-size="17" fill="#2563eb">b</text>
+        <text x="82" y="93" font-family="Georgia,serif" font-style="italic" font-weight="700" font-size="16" fill="#d97706">a+b</text>
+      </svg>
+      <div>
+        <h3>Сумма: правило треугольника</h3>
+        <p>Чтобы сложить два вектора, отложите второй вектор <b>от конца первого</b>. Тогда сумма —
+        вектор от начала первого слагаемого к концу последнего. Для трёх и более векторов работает
+        <b>правило многоугольника</b>: слагаемые выстраиваются цепочкой «конец в начало», и замыкающий
+        вектор равен их сумме. От перестановки слагаемых сумма не меняется.</p>
+      </div>
+    </div>
+
+    <div class="m-block">
+      <svg viewBox="0 0 230 120">
+        <line x1="25" y1="100" x2="150" y2="30" stroke="#dc2626" stroke-width="4" marker-end="url(#tr)"/>
+        <line x1="150" y1="30" x2="185" y2="75" stroke="#2563eb" stroke-width="4" stroke-dasharray="7 5" marker-end="url(#tb)"/>
+        <line x1="25" y1="100" x2="185" y2="75" stroke="#d97706" stroke-width="4" stroke-dasharray="9 7" marker-end="url(#tg)"/>
+        <circle cx="25" cy="100" r="4" fill="#dc2626"/>
+        <text x="80" y="55" font-family="Georgia,serif" font-style="italic" font-weight="700" font-size="17" fill="#dc2626">a</text>
+        <text x="176" y="45" font-family="Georgia,serif" font-style="italic" font-weight="700" font-size="17" fill="#2563eb">−b</text>
+        <text x="85" y="102" font-family="Georgia,serif" font-style="italic" font-weight="700" font-size="16" fill="#d97706">a−b</text>
+      </svg>
+      <div>
+        <h3>Разность векторов</h3>
+        <p>Разность <b class="v">a</b> − <b class="v">b</b> — это сумма вектора <b class="v">a</b> и вектора
+        <b class="v">−b</b>, противоположного <b class="v">b</b>. Противоположные векторы равны по длине,
+        но противонаправлены; их сумма равна нулевому вектору. Поэтому вычитание всегда можно заменить
+        сложением: <b class="v">a</b> − <b class="v">b</b> = <b class="v">a</b> + (<b class="v">−b</b>).
+        Порядок важен: <b class="v">b</b> − <b class="v">a</b> = −(<b class="v">a</b> − <b class="v">b</b>).</p>
+      </div>
+    </div>
+
+    <div class="m-block">
+      <svg viewBox="0 0 230 120">
+        <line x1="40" y1="95" x2="85" y2="63" stroke="#dc2626" stroke-width="4" marker-end="url(#tr)"/>
+        <line x1="40" y1="95" x2="130" y2="31" stroke="#d97706" stroke-width="4" marker-end="url(#tg)"/>
+        <line x1="40" y1="95" x2="13" y2="114" stroke="#2563eb" stroke-width="4" stroke-dasharray="7 5" marker-end="url(#tb)"/>
+        <line x1="40" y1="95" x2="62.5" y2="79" stroke="#059669" stroke-width="4" marker-end="url(#tb)"/>
+        <circle cx="40" cy="95" r="4" fill="#dc2626"/>
+        <text x="66" y="88" font-family="Georgia,serif" font-style="italic" font-weight="700" font-size="16" fill="#dc2626">a</text>
+        <text x="90" y="52" font-family="Georgia,serif" font-style="italic" font-weight="700" font-size="17" fill="#d97706">2a</text>
+        <text x="28" y="112" font-family="Georgia,serif" font-style="italic" font-weight="700" font-size="16" fill="#2563eb">−a</text>
+        <text x="33" y="72" font-family="Georgia,serif" font-style="italic" font-weight="700" font-size="15" fill="#059669">0,5a</text>
+        <line x1="160" y1="20" x2="220" y2="20" stroke="#e2e8f0" stroke-width="1.5"/>
+        <line x1="160" y1="20" x2="185" y2="20" stroke="#dc2626" stroke-width="4"/>
+        <line x1="160" y1="38" x2="220" y2="38" stroke="#e2e8f0" stroke-width="1.5"/>
+        <line x1="160" y1="38" x2="196" y2="38" stroke="#d97706" stroke-width="4"/>
+        <line x1="160" y1="56" x2="220" y2="56" stroke="#e2e8f0" stroke-width="1.5"/>
+        <line x1="160" y1="56" x2="172" y2="56" stroke="#2563eb" stroke-width="4"/>
+        <line x1="160" y1="74" x2="220" y2="74" stroke="#e2e8f0" stroke-width="1.5"/>
+        <line x1="160" y1="74" x2="166" y2="74" stroke="#059669" stroke-width="4"/>
+        <text x="152" y="24" font-size="10.5" fill="#64748b" text-anchor="end">длина a</text>
+        <text x="152" y="42" font-size="10.5" fill="#64748b" text-anchor="end">2a</text>
+        <text x="152" y="60" font-size="10.5" fill="#64748b" text-anchor="end">−a</text>
+        <text x="152" y="78" font-size="10.5" fill="#64748b" text-anchor="end">0,5a</text>
+      </svg>
+      <div>
+        <h3>Умножение на число</h3>
+        <p>При умножении вектора <b class="v">a</b> на число <b>k</b> получается вектор <b>k·</b><b class="v">a</b>:
+        его длина равна |k|·|<b class="v">a</b>|, а направление при k &gt; 0 совпадает с направлением
+        <b class="v">a</b>, при k &lt; 0 — противоположно. Например, 2<b class="v">a</b> вдвое длиннее и смотрит в ту же
+        сторону, −<b class="v">a</b> равен по длине, но развёрнут, а 0,5<b class="v">a</b> — вдвое короче.</p>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+'use strict';
+
+/* ============================================================
+   НАСТРОЙКИ
+   ============================================================ */
+const FEATURES = {
+  // РАСШИРЕНИЕ: КООРДИНАТНЫЙ МЕТОД (на будущее)
+  // ------------------------------------------------------------
+  // Сейчас игра полностью геометрическая: без осей, чисел и
+  // координат. Архитектура готова к быстрому подключению
+  // координатного метода:
+  //   1) поставьте coordinateMode: true — на доске появятся
+  //      оси координат с делениями (центр доски = начало координат,
+  //      ось y направлена вверх, 1 клетка = 1);
+  //   2) для перевода координат в экранные точки готов хелпер
+  //      Board.cellToScreen(x, y) — он учитывает направление оси y;
+  //   3) добавьте вопрос в массив QUESTIONS, в тексте которого
+  //      даны координаты, например:
+  //        text: 'Дан вектор a⃗{3; −2}. Постройте вектор a⃗ + b⃗, ...'
+  //      значения векторов уже хранятся в клетках (valOf),
+  //      генератор выдаёт целые компоненты;
+  //   4) проверку ответов менять не нужно — она геометрическая
+  //      (vecEq сравнивает направление и длину), поэтому работает
+  //      и для координатных задач.
+  coordinateMode: false
+};
+
+/* Доска: 24 × 14 клеток по 40 px */
+const GRID = 40, BW = 960, BH = 560, COLS = 24, ROWS = 14;
+const COLOR = {
+  a: '#dc2626', b: '#2563eb', c: '#059669',
+  drawn: '#7c3aed', gold: '#d97706', ghost: '#64748b'
+};
+const TOOLS = ['move', 'draw', 'copy', 'negate', 'erase'];
+
+/* ============================================================
+   УТИЛИТЫ (векторная математика, координаты — в клетках)
+   ============================================================ */
+const $ = id => document.getElementById(id);
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+const rnd = (a, b) => a + Math.random() * (b - a);
+const rndInt = (a, b) => Math.floor(rnd(a, b + 1));
+
+function vLen(v) { return Math.hypot(v.x, v.y); }
+function vAdd(a, b) { return { x: a.x + b.x, y: a.y + b.y }; }
+function vSub(a, b) { return { x: a.x - b.x, y: a.y - b.y }; }
+function vScale(a, k) { return { x: a.x * k, y: a.y * k }; }
+function vNeg(a) { return { x: -a.x, y: -a.y }; }
+function vDist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+function vCross(a, b) { return a.x * b.y - a.y * b.x; }
+function vDot(a, b) { return a.x * b.x + a.y * b.y; }
+
+/* Значение вектора на доске (в клетках): от начала к концу */
+function valOf(v) { return { x: (v.ex - v.sx) / GRID, y: (v.ey - v.sy) / GRID }; }
+
+/* ГЕОМЕТРИЧЕСКАЯ ПРОВЕРКА РАВЕНСТВА ВЕКТОРОВ (без координат):
+   одинаковое направление (в пределах допуска) и одинаковая длина. */
+function vecEq(u, t, tol) {
+  tol = tol || {};
+  const minLen = tol.minLen != null ? tol.minLen : 0.7;   // мин. длина ответа, клеток
+  const sinTol = tol.sinTol != null ? tol.sinTol : 0.17; // ~10° на несовпадение направления
+  const lenTol = tol.lenTol != null ? tol.lenTol : 0.09; // 9% + 0,5 клетки на длину
+  const lu = vLen(u), lt = vLen(t);
+  if (lu < minLen || lt < 1e-9) return false;
+  const sin = Math.abs(vCross(u, t)) / (lu * lt);
+  if (sin > sinTol) return false;          // не параллельны
+  if (vDot(u, t) <= 0) return false;       // противонаправлены
+  return Math.abs(lu - lt) <= Math.max(0.5, lenTol * lt);
+}
+function parallelClose(u, t) { // «страховка» генератора от спорных совпадений
+  const lu = vLen(u), lt = vLen(t);
+  if (lu < 1e-9 || lt < 1e-9) return false;
+  if (Math.abs(vCross(u, t)) / (lu * lt) > 0.25) return false;
+  return Math.abs(lu - lt) <= Math.max(0.6, 0.12 * lt);
+}
+
+/* Расстояние от точки до отрезка (в пикселях) */
+function distSeg(p, a, b) {
+  const abx = b.x - a.x, aby = b.y - a.y;
+  const L2 = abx * abx + aby * aby || 1;
+  const t = clamp(((p.x - a.x) * abx + (p.y - a.y) * aby) / L2, 0, 1);
+  return Math.hypot(p.x - (a.x + abx * t), p.y - (a.y + aby * t));
+}
+
+/* Красивый коэффициент для подписей: 1→'', −1→'−', 2→'2', 0.5→'0,5' */
+function fmtCoef(k) {
+  if (k === 1) return '';
+  if (k === -1) return '−';
+  return String(k).replace('.', ',');
+}
+/* Название терма: [['a',2]] → '2a', [['b',-1]] → '−b' */
+function termLabel(L, k) { return fmtCoef(k) + L; }
+
+/* ============================================================
+   ЗВУК (WebAudio, без внешних файлов)
+   ============================================================ */
+const SFX = {
+  ctx: null, on: true,
+  ensure() {
+    if (!this.ctx) {
+      try { this.ctx = new (window.AudioContext || window.webkitAudioContext)(); }
+      catch (e) { this.ctx = null; }
+    }
+    if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+  },
+  tone(freq, dur, type, vol, delay) {
+    if (!this.on || !this.ctx) return;
+    const t0 = this.ctx.currentTime + (delay || 0);
+    const o = this.ctx.createOscillator(), g = this.ctx.createGain();
+    o.type = type || 'sine'; o.frequency.value = freq;
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(vol || 0.12, t0 + 0.015);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    o.connect(g); g.connect(this.ctx.destination);
+    o.start(t0); o.stop(t0 + dur + 0.05);
+  },
+  play(name) {
+    this.ensure();
+    if (!this.ctx) return;
+    if (name === 'click')  this.tone(720, 0.06, 'sine', 0.06);
+    if (name === 'pop')    { this.tone(420, 0.07, 'sine', 0.09); this.tone(640, 0.09, 'sine', 0.07, 0.05); }
+    if (name === 'success'){ this.tone(523, 0.14, 'sine', 0.14); this.tone(659, 0.14, 'sine', 0.13, 0.11); this.tone(784, 0.22, 'sine', 0.13, 0.22); }
+    if (name === 'fail')   { this.tone(196, 0.22, 'triangle', 0.10); }
+    if (name === 'fanfare'){ [523, 659, 784, 1047].forEach((f, i) => this.tone(f, 0.2, 'sine', 0.12, i * 0.13)); }
+  }
+};
+
+/* ============================================================
+   ВОПРОСЫ ВИКТОРИНЫ (10 штук)
+   ------------------------------------------------------------
+   Схема вопроса:
+     type    — 'equal' | 'sum' | 'diff' | 'scale' | 'mixed'
+     badge   — короткая подпись-фишка
+     title   — заголовок задания
+     text    — текст задания (HTML разрешён; векторы — как a⃗)
+     vectors — буквы исходных векторов, напр. ['a','b']
+     expr    — математика ответа: [['a',2],['b',-1]] = 2a⃗ − b⃗
+     gen     — настройки генератора: {even, yMax, minTarget}
+     tools   — доступные инструменты {move,draw,copy,negate,erase}
+     hints   — подсказки (открываются по одной)
+     success — пояснение при верном ответе
+   ============================================================ */
+const QUESTIONS = [
+  { /* 1 */
+    type: 'equal', badge: 'Разминка', title: 'Равный вектор',
+    text: 'Нарисуйте на доске вектор, равный вектору <b class="v">a</b>⃗. Равные векторы сонаправлены и равны по длине — а вот место на доске не имеет значения.',
+    vectors: ['a'], expr: [['a', 1]], gen: { minTarget: 1 },
+    tools: { move: 1, draw: 1, copy: 0, negate: 0, erase: 1 },
+    hints: [
+      'Выберите инструмент «Рисовать» (клавиша 2) и протяните линию на пустом месте доски.',
+      'Посчитайте клетки: на сколько клеток и в какую сторону смещается вектор a⃗ — ровно так же должен смещаться Ваш вектор.',
+      'Направление важно: стрелка должна смотреть в ту же сторону, что и у вектора a⃗.'
+    ],
+    success: 'Верно! Вектор остался прежним: он сонаправлен с a⃗ и равен ему по длине — ведь вектор можно свободно переносить параллельно самому себе.'
+  },
+  { /* 2 */
+    type: 'sum', badge: 'Правило треугольника', title: 'Сумма двух векторов',
+    text: 'Постройте сумму <b class="v">a</b>⃗ + <b class="v">b</b>⃗: передвиньте векторы так, чтобы начало одного совпадало с концом другого, и нарисуйте результирующий вектор — от начала цепочки к её концу.',
+    vectors: ['a', 'b'], expr: [['a', 1], ['b', 1]], gen: { minTarget: 2.2 },
+    tools: { move: 1, draw: 1, copy: 1, negate: 1, erase: 1 },
+    hints: [
+      'Правило треугольника: отложите вектор b⃗ от конца вектора a⃗ — или наоборот, a⃗ от конца b⃗.',
+      'Передвигайте вектор инструментом «Перемещать» (клавиша 1): тяните его за тело в любое место доски.',
+      'Результирующий вектор начинается в начале первого слагаемого и заканчивается в конце последнего.'
+    ],
+    success: 'Верно! Сумма a⃗ + b⃗ построена по правилу треугольника: результирующий вектор ведёт от начала первого слагаемого к концу последнего.'
+  },
+  { /* 3 */
+    type: 'sum', badge: 'Правило многоугольника', title: 'Сумма трёх векторов',
+    text: 'Постройте сумму <b class="v">a</b>⃗ + <b class="v">b</b>⃗ + <b class="v">c</b>⃗, выстроив все три вектора цепочкой «конец в начало». Затем нарисуйте замыкающий вектор — от начала цепочки к её концу.',
+    vectors: ['a', 'b', 'c'], expr: [['a', 1], ['b', 1], ['c', 1]], gen: { minTarget: 2.2 },
+    tools: { move: 1, draw: 1, copy: 1, negate: 1, erase: 1 },
+    hints: [
+      'Выстройте цепочку: конец a⃗ — начало b⃗, конец b⃗ — начало c⃗. Порядок слагаемых не важен — сумма будет той же.',
+      'Если нужно сохранить исходные векторы на месте, сделайте их копии инструментом «Копировать» (клавиша 3).',
+      'Замыкающий вектор начинается в начале первого слагаемого и заканчивается в конце последнего.'
+    ],
+    success: 'Отлично! Сумма нескольких векторов построена по правилу многоугольника: слагаемые выстроены цепочкой, а замыкающий вектор и есть их сумма.'
+  },
+  { /* 4 */
+    type: 'diff', badge: 'a⃗ − b⃗', title: 'Разность векторов',
+    text: 'Постройте разность <b class="v">a</b>⃗ − <b class="v">b</b>⃗. Вспомните: <b class="v">a</b>⃗ − <b class="v">b</b>⃗ = <b class="v">a</b>⃗ + (−<b class="v">b</b>⃗), где −<b class="v">b</b>⃗ — вектор, противоположный вектору <b class="v">b</b>⃗. Сложите a⃗ с противоположным вектором по правилу треугольника.',
+    vectors: ['a', 'b'], expr: [['a', 1], ['b', -1]], gen: { minTarget: 2.2 },
+    tools: { move: 1, draw: 1, copy: 1, negate: 1, erase: 1 },
+    hints: [
+      'Вектор −b⃗ равен вектору b⃗ по длине, но направлен в противоположную сторону.',
+      'Инструмент «Развернуть» (клавиша 4): щёлкните по копии вектора b⃗ — она превратится в −b⃗. Если щёлкнуть по исходному вектору, будет создана развёрнутая копия.',
+      'Теперь сложите a⃗ и −b⃗ по правилу треугольника: цепочка «конец в начало», затем замыкающий вектор.'
+    ],
+    success: 'Верно! a⃗ − b⃗ = a⃗ + (−b⃗): Вы заменили вычитание прибавлением противоположного вектора и применили правило треугольника.'
+  },
+  { /* 5 */
+    type: 'diff', badge: 'b⃗ − a⃗', title: 'Разность векторов',
+    text: 'Постройте разность <b class="v">b</b>⃗ − <b class="v">a</b>⃗. Будьте внимательны: теперь из <b class="v">b</b>⃗ вычитается <b class="v">a</b>⃗ — порядок векторов изменился!',
+    vectors: ['a', 'b'], expr: [['b', 1], ['a', -1]], gen: { minTarget: 2.2 },
+    tools: { move: 1, draw: 1, copy: 1, negate: 1, erase: 1 },
+    hints: [
+      'b⃗ − a⃗ = b⃗ + (−a⃗): теперь противоположный нужен к вектору a⃗, а не к b⃗.',
+      'Сложите b⃗ с вектором −a⃗ цепочкой «конец в начало».',
+      'Результирующий вектор — от начала b⃗ к концу −a⃗.'
+    ],
+    success: 'Верно! b⃗ − a⃗ найдено верно — порядок векторов в разности очень важен: b⃗ − a⃗ и a⃗ − b⃗ — противоположные векторы.'
+  },
+  { /* 6 */
+    type: 'scale', badge: '−a⃗', title: 'Противоположный вектор',
+    text: 'Постройте вектор −<b class="v">a</b>⃗ — противоположный вектору <b class="v">a</b>⃗. Он равен a⃗ по длине и лежит на параллельной прямой, но направлен в противоположную сторону.',
+    vectors: ['a'], expr: [['a', -1]], gen: { minTarget: 1 },
+    tools: { move: 1, draw: 1, copy: 1, negate: 1, erase: 1 },
+    hints: [
+      'Продлите мыслительно прямую вектора a⃗ в обратную сторону — туда должен смотреть −a⃗.',
+      'Можно скопировать a⃗ инструментом «Копировать» (клавиша 3) и развернуть копию инструментом «Развернуть» (клавиша 4).',
+      'А можно просто нарисовать равный по длине вектор, направленный в противоположную сторону.'
+    ],
+    success: 'Верно! −a⃗ построен: та же длина, то же направление прямой — но стрелка смотрит в противоположную сторону. Заметьте: a⃗ + (−a⃗) = 0⃗.'
+  },
+  { /* 7 */
+    type: 'scale', badge: '2a⃗', title: 'Умножение на число',
+    text: 'Постройте вектор 2<b class="v">a</b>⃗: он сонаправлен с a⃗, а его длина вдвое больше.',
+    vectors: ['a'], expr: [['a', 2]], gen: { minTarget: 1, yMax: 4 },
+    tools: { move: 1, draw: 1, copy: 1, negate: 1, erase: 1 },
+    hints: [
+      'Отложите на прямой вектора a⃗ два таких отрезка подряд.',
+      'Можно скопировать a⃗ и приложить копию «конец в начало» — получится цепочка из двух равных векторов.',
+      'Результирующий вектор 2a⃗ проведите от начала цепочки к её концу — он вдвое длиннее a⃗.'
+    ],
+    success: 'Верно! 2a⃗ сонаправлен с a⃗ и вдвое длиннее: при умножении на k > 0 направление сохраняется, а длина умножается на k.'
+  },
+  { /* 8 */
+    type: 'scale', badge: '0,5a⃗', title: 'Половина вектора',
+    text: 'Постройте вектор 0,5<b class="v">a</b>⃗ (a⃗/2) — половину вектора a⃗: то же направление, вдвое меньшая длина.',
+    vectors: ['a'], expr: [['a', 0.5]], gen: { even: true, minTarget: 1, lenRange: [2.8, 4.6] },
+    tools: { move: 1, draw: 1, copy: 1, negate: 1, erase: 1 },
+    hints: [
+      'Каждая «сторона ступеньки» вектора a⃗ — чётное число клеток: уменьшите обе вдвое.',
+      'Например, если a⃗ смещается на 4 клетки вправо и 2 вверх, то 0,5a⃗ — на 2 вправо и 1 вверх.',
+      'Направление то же: результирующий вектор параллелен a⃗ и смотрит в ту же сторону.'
+    ],
+    success: 'Верно! 0,5a⃗ построен: при умножении на дробное число 0 < k < 1 вектор становится короче, не меняя направления.'
+  },
+  { /* 9 */
+    type: 'mixed', badge: '2a⃗ + b⃗', title: 'Комбинация действий',
+    text: 'Постройте вектор 2<b class="v">a</b>⃗ + <b class="v">b</b>⃗: сначала удвойте a⃗, затем приложите к нему b⃗ по правилу треугольника — и нарисуйте результирующий вектор.',
+    vectors: ['a', 'b'], expr: [['a', 2], ['b', 1]], gen: { minTarget: 2.2, yMax: 4 },
+    tools: { move: 1, draw: 1, copy: 1, negate: 1, erase: 1 },
+    hints: [
+      'Начните с вектора 2a⃗: скопируйте a⃗ и приложите копию «конец в начало» — получится удвоенный вектор.',
+      'Затем приложите b⃗ к концу получившейся цепочки.',
+      'Замыкающий вектор — от начала цепочки к концу b⃗.'
+    ],
+    success: 'Отлично! Сначала умножение на число, затем сложение по правилу треугольника — два действия в одной задаче.'
+  },
+  { /* 10 */
+    type: 'mixed', badge: '2a⃗ − b⃗', title: 'Финальное испытание',
+    text: 'Финал! Постройте вектор 2<b class="v">a</b>⃗ − <b class="v">b</b>⃗ = 2<b class="v">a</b>⃗ + (−<b class="v">b</b>⃗). Удвойте a⃗, разверните b⃗, сложите получившиеся векторы — и нарисуйте результат.',
+    vectors: ['a', 'b'], expr: [['a', 2], ['b', -1]], gen: { minTarget: 2.2, yMax: 4 },
+    tools: { move: 1, draw: 1, copy: 1, negate: 1, erase: 1 },
+    hints: [
+      'Замените разность суммой: 2a⃗ − b⃗ = 2a⃗ + (−b⃗).',
+      'Сначала постройте 2a⃗ (копия a⃗ «конец в начало»), затем получите −b⃗ инструментом «Развернуть».',
+      'Сложите 2a⃗ и −b⃗ цепочкой и нарисуйте замыкающий вектор.'
+    ],
+    success: 'Блестяще! Вы справились с финальным испытанием: умножение на число, противоположный вектор и правило треугольника — всё в одной задаче!'
+  }
+];
+
+/* ============================================================
+   ГЕНЕРАТОР ЗАДАНИЙ
+   Значения векторов — целые смещения в клетках, чтобы построения
+   по сетке были точными. Ученик чисел не видит: подход чисто
+   геометрический, сетка — лишь чертёжная миллиметровка.
+   ============================================================ */
+const BASE_DIRS = [
+  [1, 2], [2, 1], [2, 2], [3, 1], [1, 3], [3, 2], [2, 3], [4, 1],
+  [1, 4], [4, 3], [3, 4], [5, 1], [1, 5], [5, 2], [2, 5],
+  [5, 0], [0, 5], [4, 0], [0, 4], [3, 0], [0, 3], [2, 0], [0, 2]
+];
+const EVEN_DIRS = [[2, 0], [0, 2], [2, 2], [4, 0], [0, 4], [4, 2], [2, 4], [4, 4]];
+
+/* Якоря размещения исходных векторов (в клетках) */
+const ANCHORS = {
+  1: [[11, 3.5]],
+  2: [[6, 3.5], [17, 4.5]],
+  3: [[4.5, 3], [11.5, 2.5], [18.5, 4.5]]
+};
+
+function genValue(gen) {
+  gen = gen || {};
+  const [lo, hi] = gen.lenRange || [2, 5.5];
+  const pool = (gen.even ? EVEN_DIRS : BASE_DIRS).filter(d => {
+    const L = Math.hypot(d[0], d[1]);
+    return L >= lo && L <= hi && Math.abs(d[1]) <= (gen.yMax || 5);
+  });
+  const d = pool[rndInt(0, pool.length - 1)];
+  return { x: d[0] * (Math.random() < 0.5 ? 1 : -1), y: d[1] * (Math.random() < 0.5 ? 1 : -1) };
+}
+
+function sumExpr(expr, vals) {
+  let t = { x: 0, y: 0 };
+  for (const [L, k] of expr) t = vAdd(t, vScale(vals[L], k));
+  return t;
+}
+
+/* Список «опасных» совпадений: цель не должна совпадать с вектором,
+   который ученик может получить одним простым действием, — иначе
+   неверное построение пройдёт проверку. */
+function guardCandidates(cfg, vals) {
+  const out = [];
+  const coefs = { 1: true };
+  for (const [, k] of cfg.expr) { coefs[Math.abs(k)] = true; }
+  for (const L of cfg.vectors) {
+    for (const c of Object.keys(coefs)) {
+      const v = vScale(vals[L], +c);
+      out.push(v, vNeg(v));
+    }
+  }
+  return out;
+}
+
+/* Мгновенное создание вопроса: случайные векторы + ограничения */
+function instantiate(cfg) {
+  const n = cfg.vectors.length;
+  const gen = cfg.gen || {};
+  const fallback = {
+    1: [{ x: 2, y: 1 }],
+    2: [{ x: 3, y: 1 }, { x: -2, y: 2 }],
+    3: [{ x: 3, y: 1 }, { x: -2, y: 2 }, { x: 1, y: 3 }]
+  };
+
+  for (let attempt = 0; attempt < 400; attempt++) {
+    const vals = {};
+    cfg.vectors.forEach(L => { vals[L] = genValue(gen); });
+    const target = sumExpr(cfg.expr, vals);
+
+    /* Длина результата и его размеры на доске */
+    if (vLen(target) < (gen.minTarget != null ? gen.minTarget : 2.2)) continue;
+    if (Math.abs(target.x) > 11 || Math.abs(target.y) > 9) continue;
+
+    /* Попарные углы между исходными векторами (не слишком «слипшиеся») */
+    let ok = true;
+    for (let i = 0; i < n && ok; i++)
+      for (let j = i + 1; j < n && ok; j++) {
+        const vi = vals[cfg.vectors[i]], vj = vals[cfg.vectors[j]];
+        if (Math.abs(vCross(vi, vj)) / (vLen(vi) * vLen(vj)) < 0.37) ok = false;
+      }
+    if (!ok) continue;
+
+    /* Защита от ложных совпадений цели с простыми векторами */
+    if (guardCandidates(cfg, vals).some(g => parallelClose(target, g))) continue;
+
+    /* Расстановка по якорям с дрожанием */
+    for (let j = 0; j < 40; j++) {
+      const given = [];
+      let spaced = true;
+      for (let i = 0; i < n; i++) {
+        const L = cfg.vectors[i], v = vals[L];
+        const base = ANCHORS[n][i];
+        const tail = {
+          x: base[0] + rndInt(-1, 1),
+          y: base[1] + rndInt(-1, 1)
+        };
+        /* хвост и голова должны остаться на доске с полями */
+        tail.x = clamp(tail.x, 1 - Math.min(0, v.x), COLS - 1 - Math.max(0, v.x));
+        tail.y = clamp(tail.y, 1 - Math.min(0, v.y), ROWS - 1 - Math.max(0, v.y));
+        for (const g of given) {
+          if (vDist({ x: tail.x + v.x / 2, y: tail.y + v.y / 2 }, { x: g.tail.x + g.value.x / 2, y: g.tail.y + g.value.y / 2 }) < 4.5) spaced = false;
+        }
+        given.push({ letter: L, value: v, tail });
+      }
+      if (spaced || j === 39) return { given, vals, target };
+    }
+  }
+  /* Страховка: заранее подобранные значения (почти недостижимо) */
+  const vals = {};
+  cfg.vectors.forEach((L, i) => { vals[L] = fallback[n][i]; });
+  const given = cfg.vectors.map((L, i) => ({
+    letter: L, value: vals[L], tail: { x: ANCHORS[n][i][0], y: ANCHORS[n][i][1] }
+  }));
+  return { given, vals, target: sumExpr(cfg.expr, vals) };
+}
+
+/* ============================================================
+   ПРОВЕРКА ОТВЕТА И ДИАГНОСТИКА ОШИБОК
+   ============================================================ */
+
+/* Поиск вектора на доске, равного цели (геометрически) */
+function findMatch(stud, target) {
+  return stud.find(v => vecEq(valOf(v), target)) || null;
+}
+
+/* Специальные «узнавания» типичных ошибок: сравниваем ответ ученика
+   с правдоподобными неверными результатами и подсказываем, что не так. */
+function buildSpecials(q) {
+  const list = []; // [{vec, msg}]
+  const cfg = q.cfg, vals = q.vals;
+  const type = cfg.type;
+  const single = (v, msg) => list.push({ vec: v, msg });
+
+  /* Каждый терм выражения и его отрицание */
+  for (const [L, k] of cfg.expr) {
+    const term = vScale(vals[L], k);
+    if (type === 'mixed' && cfg.expr.length > 1) {
+      if (k !== 1)
+        single(term, `Вектор ${termLabel(L, k)}⃗ построен верно — осталось прибавить к нему второе слагаемое.`);
+      if (k !== 1)
+        single(vNeg(term), `Вектор ${termLabel(L, k)}⃗ построен, но направлен в противоположную сторону — проверьте знак.`);
+      if (k !== 1 && Math.abs(k) !== 1)
+        single(vals[L], `Похоже, это сам вектор ${L}⃗ — его длину нужно изменить в ${Math.abs(k)} раз${k < 0 ? ' и развернуть' : ''}.`);
+    }
+  }
+  if (type === 'scale' && cfg.expr[0][1] !== 1) {
+    const [L, k] = cfg.expr[0];
+    single(vals[L], `Похоже, это сам вектор ${L}⃗ — при умножении на ${fmtCoef(k) || k} его длина должна измениться${k < 0 ? ', а направление — развернуться' : ''}.`);
+    single(vNeg(vals[L]), k > 0
+      ? `Это вектор −${L}⃗ — противоположный. Он нужен при отрицательном коэффициенте, а у Вас k = ${(fmtCoef(k) || k)} > 0.`
+      : `Это вектор ${L}⃗ без разворота — при k < 0 вектор должен смотреть в противоположную сторону.`);
+  }
+  if (type === 'sum') {
+    for (const L of cfg.vectors) {
+      single(vals[L], `Это лишь один из векторов суммы — постройте замыкающий вектор всей цепочки.`);
+      single(vNeg(vals[L]), `Это −${L}⃗ — при сложении знаки менять не нужно: складывайте сами векторы.`);
+    }
+    if (cfg.vectors.length === 2) {
+      const A = vals[cfg.vectors[0]], B = vals[cfg.vectors[1]];
+      single(vSub(A, B), `Похоже, построена разность ${cfg.vectors[0]}⃗ − ${cfg.vectors[1]}⃗, а нужна сумма.`);
+      single(vSub(B, A), `Похоже, построена разность ${cfg.vectors[1]}⃗ − ${cfg.vectors[0]}⃗, а нужна сумма.`);
+    }
+  }
+  if (type === 'diff') {
+    const A = vals[cfg.vectors[0]], B = vals[cfg.vectors[1]];
+    single(vAdd(A, B), `Похоже, это сумма ${cfg.vectors[0]}⃗ + ${cfg.vectors[1]}⃗, а нужна разность: замените вычитаемый вектор на противоположный.`);
+    single(vNeg(q.target), `Это противоположный вектор — проверьте порядок: из какого вектора что вычитается.`);
+  }
+  return list;
+}
+
+/* Диагностика неверного ответа: конкретное сообщение вместо «неверно» */
+function diagnose(stud, q) {
+  /* 1) типовые ошибки — узнаём по построенному вектору */
+  const specials = buildSpecials(q);
+  for (const s of specials) {
+    if (stud.some(v => vecEq(valOf(v), s.vec))) return s.msg;
+  }
+
+  /* 2) геометрические замечания по «ближайшему» к цели вектору */
+  let best = null, bestScore = -1;
+  for (const v of stud) {
+    const u = valOf(v), t = q.target;
+    const lu = vLen(u), lt = vLen(t);
+    const sim = (lu < 0.5) ? -1 : 1 / (1 + Math.abs(vCross(u, t)) / (lu * lt || 1) + Math.abs(lu - lt) / (lt || 1));
+    if (sim > bestScore) { bestScore = sim; best = v; }
+  }
+  if (best) {
+    const u = valOf(best), t = q.target;
+    const lu = vLen(u), lt = vLen(t);
+    const sin = Math.abs(vCross(u, t)) / (lu * lt || 1);
+    if (sin <= 0.2 && vDot(u, t) <= 0 && Math.abs(lu - lt) <= Math.max(0.6, 0.1 * lt)) {
+      return 'Вектор получился нужной длины, но направлен в противоположную сторону — проверьте знак: порядок вычитания или коэффициент.';
+    }
+    if (sin <= 0.2 && vDot(u, t) > 0) {
+      return lu > lt * 1.12
+        ? 'Направление верное, но вектор длиннее нужного — проверьте длину результата.'
+        : (lu < lt * 0.88
+          ? 'Направление верное, но вектор короче нужного — проверьте длину результата.'
+          : null);
+    }
+  }
+
+  /* 3) общий совет по типу задания */
+  switch (q.cfg.type) {
+    case 'equal': return 'Проверьте направление и длину: вектор должен быть сонаправлен с a⃗ и равен ему по длине.';
+    case 'sum': return 'Сложите векторы по правилу треугольника: второй — точно из конца первого, а ответ — от начала цепочки к её концу.';
+    case 'diff': return 'Замените вычитание сложением с противоположным вектором, затем примените правило треугольника.';
+    case 'scale': return 'Вектор должен быть параллелен исходному: сонаправлен при k > 0, противонаправлен при k < 0, а длины отличаются в |k| раз.';
+    default: return 'Сначала постройте промежуточные векторы (например, 2a⃗), затем сложите их по правилу треугольника и нарисуйте замыкающий.';
+  }
+}
+
+/* ============================================================
+   РАСПОЗНАВАНИЕ ЦЕПОЧКИ (бонус-похвала за правило треугольника)
+   ============================================================ */
+function permutations(arr) {
+  if (arr.length <= 1) return [arr];
+  const out = [];
+  arr.forEach((x, i) => {
+    permutations(arr.slice(0, i).concat(arr.slice(i + 1))).forEach(p => out.push([x].concat(p)));
+  });
+  return out;
+}
+
+/* Ищем на доске цепочку «конец в начало» из векторов, равных required */
+function findChain(required, vectors) {
+  const req = required.map(v => v);
+  function rec(i, usedIds, chainStart, lastEnd) {
+    if (i === req.length) return { start: chainStart, end: lastEnd };
+    for (const v of vectors) {
+      if (usedIds.has(v.id)) continue;
+      if (!vecEq(valOf(v), req[i], { sinTol: 0.22, lenTol: 0.13, minLen: 0.3 })) continue;
+      const start = { x: v.sx, y: v.sy }, end = { x: v.ex, y: v.ey };
+      if (i > 0 && vDist(start, lastEnd) > 0.6) continue;
+      usedIds.add(v.id);
+      const r = rec(i + 1, usedIds, i === 0 ? start : chainStart, end);
+      usedIds.delete(v.id);
+      if (r) return r;
+    }
+    return null;
+  }
+  for (const perm of permutations(req)) {
+    const r = rec(0, new Set(), null, null);
+    if (r) return r;
+  }
+  return null;
+}
+
+/* Проверяем, выстроил ли ученик слагаемые цепочкой (для похвалы) */
+function detectChainMessage(q) {
+  const vectors = Board.vectors;
+  const cfg = q.cfg;
+  let candidates = [];
+  if (cfg.type === 'sum') {
+    candidates = [cfg.vectors.map(L => q.vals[L])];
+  } else if (cfg.type === 'diff') {
+    const [A, B] = cfg.vectors;
+    candidates = [[q.vals[A], vNeg(q.vals[B])]];
+  } else if (cfg.type === 'mixed') {
+    const terms = cfg.expr.map(([L, k]) => vScale(q.vals[L], k));
+    const expanded = [];
+    cfg.expr.forEach(([L, k]) => {
+      const n = Math.abs(Math.round(k));
+      for (let i = 0; i < n; i++) expanded.push(k >= 0 ? q.vals[L] : vNeg(q.vals[L]));
+    });
+    candidates = [terms, expanded];
+  }
+  for (const req of candidates) {
+    if (req.length >= 2 && findChain(req, vectors)) {
+      return req.length >= 3
+        ? 'Правило многоугольника применено: слагаемые выстроены цепочкой «конец в начало»!'
+        : 'Правило треугольника применено: слагаемые выстроены цепочкой «конец в начало»!';
+    }
+  }
+  return '';
+}
+
+/* ============================================================
+   ДОСКА — движок построений (canvas)
+   Вектор = {id, kind:'given'|'copy'|'drawn', letter, negated,
+             sx,sy,ex,ey, home}   координаты — в пикселях.
+   given — исходный (значение неизменно, двигать можно),
+   copy  — копия исходного (значение зафиксировано, можно
+           разворачивать и двигать), drawn — нарисованный учеником
+           (свободный, концы редактируются).
+   ============================================================ */
+let __uid = 0;
+const uid = () => ++__uid;
+
+const Board = {
+  cvs: null, ctx: null, bg: null, dpr: 1,
+  vectors: [], ghost: null, particles: [],
+  preview: null, drag: null,
+  tool: 'move', snapOn: true, undoStack: [],
+  hoverId: null, hoverEnd: null, highlight: null, shakes: {},
+
+  init() {
+    this.cvs = $('board');
+    this.dpr = Math.min(2, window.devicePixelRatio || 1);
+    this.cvs.width = BW * this.dpr;
+    this.cvs.height = BH * this.dpr;
+    this.ctx = this.cvs.getContext('2d');
+    this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    this.snapOn = (localStorage_get('vectorQuiz.snap') !== '0');
+    $('snap').checked = this.snapOn;
+    this.makeBg();
+
+    this.cvs.addEventListener('pointerdown', e => this.onDown(e));
+    this.cvs.addEventListener('pointermove', e => this.onMove(e));
+    this.cvs.addEventListener('pointerup', e => this.onUp(e));
+    this.cvs.addEventListener('pointercancel', () => { this.drag = null; this.preview = null; });
+
+    const loop = ts => { this.render(ts); requestAnimationFrame(loop); };
+    requestAnimationFrame(loop);
+  },
+
+  /* ---------- Фон: точки сетки (или оси в координатном режиме) ---------- */
+  makeBg() {
+    const c = document.createElement('canvas');
+    c.width = BW * this.dpr; c.height = BH * this.dpr;
+    const g = c.getContext('2d');
+    g.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    g.fillStyle = '#fdfdff'; g.fillRect(0, 0, BW, BH);
+
+    if (FEATURES.coordinateMode) {
+      /* координатный метод (выключен по умолчанию — см. FEATURES) */
+      g.strokeStyle = '#eef1f6'; g.lineWidth = 1;
+      for (let i = 0; i <= COLS; i++) { g.beginPath(); g.moveTo(i * GRID + .5, 0); g.lineTo(i * GRID + .5, BH); g.stroke(); }
+      for (let j = 0; j <= ROWS; j++) { g.beginPath(); g.moveTo(0, j * GRID + .5); g.lineTo(BW, j * GRID + .5); g.stroke(); }
+      const O = this.cellToScreen(0, 0);
+      g.strokeStyle = '#94a3b8'; g.lineWidth = 1.6;
+      g.beginPath(); g.moveTo(0, O.y); g.lineTo(BW, O.y); g.moveTo(O.x, 0); g.lineTo(O.x, BH); g.stroke();
+      g.fillStyle = '#94a3b8'; g.font = '10px sans-serif'; g.textAlign = 'center';
+      for (let i = -COLS / 2; i <= COLS / 2; i++) {
+        if (!i) continue;
+        const p = this.cellToScreen(i, 0);
+        g.fillText(String(i), p.x, O.y + 14);
+      }
+      for (let j = -ROWS / 2; j <= ROWS / 2; j++) {
+        if (!j) continue;
+        const p = this.cellToScreen(0, j);
+        g.fillText(String(j), O.x - 10, p.y + 3);
+      }
+    } else {
+      /* геометрический режим: миллиметровка из точек, без чисел */
+      g.fillStyle = '#cdd5e1';
+      for (let i = 0; i <= COLS; i++)
+        for (let j = 0; j <= ROWS; j++) {
+          g.beginPath(); g.arc(i * GRID, j * GRID, 1.6, 0, 6.2832); g.fill();
+        }
+    }
+    this.bg = c;
+  },
+
+  /* хелпер для будущих координатных задач: (x, y) в клетках → экран */
+  cellToScreen(x, y) { return { x: (COLS / 2 + x) * GRID, y: (ROWS / 2 - y) * GRID }; },
+
+  /* ---------- Состояие ---------- */
+  reset(givenDefs) {
+    this.vectors = givenDefs.map(g => ({
+      id: uid(), kind: 'given', letter: g.letter, negated: false,
+      sx: g.tail.x * GRID, sy: g.tail.y * GRID,
+      ex: (g.tail.x + g.value.x) * GRID, ey: (g.tail.y + g.value.y) * GRID,
+      home: { sx: g.tail.x * GRID, sy: g.tail.y * GRID }
+    }));
+    this.ghost = null; this.drag = null; this.preview = null;
+    this.undoStack = []; this.highlight = null; this.shakes = {};
+    updateUndoBtn();
+  },
+
+  setTool(t) {
+    if (Game.q && Game.q.cfg.tools[t] === 0) { toast('В этом задании инструмент недоступен — следуйте условию'); return; }
+    this.tool = t;
+    document.querySelectorAll('.tool-btn').forEach(b => b.classList.toggle('active', b.dataset.tool === t));
+    this.cvs.style.cursor = t === 'draw' ? 'crosshair' : 'default';
+  },
+
+  pushUndo() {
+    this.undoStack.push(JSON.stringify(this.vectors));
+    if (this.undoStack.length > 60) this.undoStack.shift();
+    updateUndoBtn();
+  },
+  undo() {
+    if (!this.undoStack.length) return;
+    this.vectors = JSON.parse(this.undoStack.pop());
+    if (this.highlight && !this.vectors.some(v => v.id === this.highlight.id)) this.highlight = null;
+    updateUndoBtn();
+  },
+  clearAll() {
+    if (!this.vectors.length) return;
+    this.pushUndo();
+    /* ученические построения убираем, исходные возвращаем «домой» */
+    const givens = this.vectors.filter(v => v.kind === 'given');
+    givens.forEach(v => {
+      const val = { x: v.ex - v.sx, y: v.ey - v.sy };
+      v.sx = v.home.sx; v.sy = v.home.sy;
+      v.ex = v.home.sx + val.x; v.ey = v.home.sy + val.y;
+    });
+    this.vectors = givens;
+    this.ghost = null;
+  },
+
+  /* ---------- Вспомогательные ---------- */
+  evtPos(e) {
+    const r = this.cvs.getBoundingClientRect();
+    return { x: (e.clientX - r.left) * BW / r.width, y: (e.clientY - r.top) * BH / r.height };
+  },
+snapPt(p) {
+  if (!this.snapOn) return { x: Math.round(p.x), y: Math.round(p.y) };
+  return {
+    x: Math.round(p.x / GRID) * GRID,
+    y: Math.round(p.y / GRID) * GRID
+  };
+},
+clampTailPx(t, vx, vy) {
+  // Ограничение координат начала вектора в пределах игровой доски
+  let x = clamp(t.x, 0, BW - vx);
+  let y = clamp(t.y, 0, BH - vy);
+  
+  // Если привязка к сетке включена — выравниваем начало вектора по узлам
+  if (this.snapOn) {
+    x = Math.round(x / GRID) * GRID;
+    y = Math.round(y / GRID) * GRID;
+  }
+  
+  return { x, y };
+},
+  hitEndpoint(p) {
+    for (let i = this.vectors.length - 1; i >= 0; i--) {
+      const v = this.vectors[i];
+      if (v.kind !== 'drawn') continue;
+      if (Math.hypot(p.x - v.sx, p.y - v.sy) <= 12) return { v, which: 's' };
+      if (Math.hypot(p.x - v.ex, p.y - v.ey) <= 12) return { v, which: 'e' };
+    }
+    return null;
+  },
+  hitBody(p) {
+    for (let i = this.vectors.length - 1; i >= 0; i--) {
+      const v = this.vectors[i];
+      if (distSeg(p, { x: v.sx, y: v.sy }, { x: v.ex, y: v.ey }) <= 11) return v;
+    }
+    return null;
+  },
+
+  shake(id) { this.shakes[id] = performance.now(); },
+
+  burst(x, y, n) {
+    const colors = ['#dc2626', '#2563eb', '#059669', '#7c3aed', '#d97706'];
+    for (let i = 0; i < n; i++) {
+      this.particles.push({
+        x, y, vx: rnd(-3.6, 3.6), vy: rnd(-7.2, -2), size: rnd(3.5, 7),
+        rot: rnd(0, 6.28), vr: rnd(-0.18, 0.18),
+        color: colors[rndInt(0, colors.length - 1)], life: rnd(50, 85), age: 0
+      });
+    }
+  },
+
+  /* ---------- Обработка указателя ---------- */
+  onDown(e) {
+    SFX.ensure();
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    if (Game.state.screen !== 'quiz' || !Game.q || Game.q.solved) return;
+    const p = this.evtPos(e);
+    this.cvs.setPointerCapture(e.pointerId);
+
+    if (this.tool === 'draw') {
+      if (this.hitBody(p) || this.hitEndpoint(p)) { toast('Начните рисование на свободном месте доски'); return; }
+      this.drag = { mode: 'draw', a: this.snapPt(p), b: this.snapPt(p) };
+      return;
+    }
+
+    if (this.tool === 'move') {
+      const h = this.hitEndpoint(p);
+      if (h) {
+        this.drag = { mode: 'end', v: h.v, which: h.which, pushed: false };
+        return;
+      }
+      const b = this.hitBody(p);
+      if (b) {
+        this.drag = {
+          mode: 'move', v: b, moved: false,
+          gx: p.x - b.sx, gy: p.y - b.sy,
+          orig: { sx: b.sx, sy: b.sy, ex: b.ex, ey: b.ey }
+        };
+      }
+      return;
+    }
+
+    if (this.tool === 'copy') {
+      const b = this.hitBody(p);
+      if (!b) return;
+      this.pushUndo();
+      const c = this.cloneVec(b);
+      this.vectors.push(c);
+      SFX.play('pop');
+      toast(c.letter ? `Создана копия вектора ${c.negated ? '−' : ''}${c.letter}⃗` : 'Создана копия вектора');
+      return;
+    }
+
+    if (this.tool === 'negate') {
+      const b = this.hitBody(p);
+      if (!b) return;
+      if (b.kind === 'given') {
+        this.pushUndo();
+        const c = this.negCopy(b);
+        this.vectors.push(c);
+        SFX.play('pop');
+        toast(`Создан вектор −${b.letter}⃗ — противоположный исходному`);
+      } else {
+        this.pushUndo();
+        this.swapEnds(b);
+        if (b.letter) b.negated = !b.negated;
+        SFX.play('pop');
+      }
+      return;
+    }
+
+    if (this.tool === 'erase') {
+      const b = this.hitBody(p);
+      if (!b) return;
+      if (b.kind === 'given') {
+        this.shake(b.id);
+        toast('Исходный вектор удалить нельзя — его можно только передвигать');
+      } else {
+        this.pushUndo();
+        this.vectors = this.vectors.filter(v => v.id !== b.id);
+        SFX.play('click');
+      }
+    }
+  },
+
+  onMove(e) {
+    const p = this.evtPos(e);
+    if (this.drag) {
+      const d = this.drag;
+      if (d.mode === 'draw') {
+        d.b = this.snapPt(p);
+      } else if (d.mode === 'end') {
+        if (!d.pushed) { this.pushUndo(); d.pushed = true; }
+        const np = this.snapPt(p);
+        if (d.which === 's') { d.v.sx = np.x; d.v.sy = np.y; }
+        else { d.v.ex = np.x; d.v.ey = np.y; }
+      } else if (d.mode === 'move') {
+    if (!d.moved) {
+        if (Math.hypot(p.x - d.orig.sx - d.gx, p.y - d.orig.sy - d.gy) > 3) {
+            this.pushUndo();
+            d.moved = true;
+        }
+    }
+    if (d.moved) {
+        const vx = d.orig.ex - d.orig.sx;
+        const vy = d.orig.ey - d.orig.sy;
+        
+        // Рассчитываем желаемую позицию начала вектора
+        const rawTail = {
+            x: p.x - d.gx,
+            y: p.y - d.gy
+        };
+        
+        // Применяем привязку к сетке и ограничения по границам доски
+        const t = this.clampTailPx(rawTail, vx, vy);
+        
+        d.v.sx = t.x;
+        d.v.sy = t.y;
+        d.v.ex = t.x + vx;
+        d.v.ey = t.y + vy;
+    }
+}
+      return;
+    }
+    /* hover-подсветка и курсор */
+    if (Game.state.screen !== 'quiz' || !Game.q || Game.q.solved) { this.hoverId = null; this.hoverEnd = null; return; }
+    const h = this.tool === 'move' ? this.hitEndpoint(p) : null;
+    this.hoverEnd = h;
+    const b = (this.tool !== 'draw') ? this.hitBody(p) : null;
+    this.hoverId = b ? b.id : null;
+    this.cvs.style.cursor = h ? 'crosshair' : (b ? 'grab' : (this.tool === 'draw' ? 'crosshair' : (this.tool === 'move' ? 'default' : 'pointer')));
+  },
+
+  onUp(e) {
+    if (!this.drag) return;
+    const d = this.drag;
+    this.drag = null;
+    if (d.mode === 'draw') {
+      const a = d.a, b = d.b;
+      if (Math.hypot(a.x - b.x, a.y - b.y) >= GRID * 0.75) {
+        this.pushUndo();
+        this.vectors.push({ id: uid(), kind: 'drawn', letter: null, negated: false, sx: a.x, sy: a.y, ex: b.x, ey: b.y });
+        SFX.play('pop');
+      }
+    }
+  },
+
+cloneVec(v) {
+  const val = { x: v.ex - v.sx, y: v.ey - v.sy };
+  let t = { x: v.sx + GRID, y: v.sy + GRID };
+  t = this.clampTailPx(t, val.x, val.y);
+  return {
+    id: uid(), 
+    kind: v.letter ? 'copy' : 'drawn',
+    letter: v.letter || null, 
+    negated: !!v.negated,
+    sx: t.x, 
+    sy: t.y, 
+    ex: t.x + val.x, 
+    ey: t.y + val.y
+  };
+},
+  negCopy(v) {
+    const val = { x: -(v.ex - v.sx), y: -(v.ey - v.sy) };
+    let t = { x: v.sx + 1.5 * GRID, y: v.sy + 1.5 * GRID };
+    t = this.clampTailPx(t, val.x, val.y);
+    return {
+      id: uid(), kind: 'copy', letter: v.letter, negated: true,
+      sx: t.x, sy: t.y, ex: t.x + val.x, ey: t.y + val.y
+    };
+  },
+  swapEnds(v) { const tx = v.sx, ty = v.sy; v.sx = v.ex; v.sy = v.ey; v.ex = tx; v.ey = ty; },
+
+  /* ============================================================
+     ОТРИСОВКА
+     ============================================================ */
+  render(ts) {
+    const ctx = this.ctx;
+    ctx.clearRect(0, 0, BW, BH);
+    if (this.bg) ctx.drawImage(this.bg, 0, 0, BW, BH);
+
+    /* эталонное построение (призраки) */
+    if (this.ghost) this.ghost.forEach(g => this.drawGhost(g));
+
+    /* векторы поверх */
+    for (const v of this.vectors) this.drawVector(v, ts);
+
+    /* предпросмотр рисования */
+    if (this.drag && this.drag.mode === 'draw') {
+      const { a, b } = this.drag;
+      ctx.save();
+      ctx.strokeStyle = COLOR.drawn; ctx.lineWidth = 3; ctx.setLineDash([8, 6]); ctx.globalAlpha = .85;
+      ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+      ctx.setLineDash([]);
+      [[a.x, a.y], [b.x, b.y]].forEach(q => {
+        ctx.beginPath(); ctx.arc(q[0], q[1], 4.5, 0, 6.2832);
+        ctx.fillStyle = '#fff'; ctx.fill(); ctx.strokeStyle = COLOR.drawn; ctx.stroke();
+      });
+      ctx.restore();
+    }
+
+    /* конфетти */
+    this.drawParticles();
+  },
+
+  drawParticles() {
+    const ctx = this.ctx;
+    for (let i = this.particles.length - 1; i >= 0; i--) {
+      const p = this.particles[i];
+      p.x += p.vx; p.y += p.vy; p.vy += 0.18; p.rot += p.vr; p.age++;
+      if (p.age > p.life) { this.particles.splice(i, 1); continue; }
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, 1 - p.age / p.life);
+      ctx.translate(p.x, p.y); ctx.rotate(p.rot);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.62);
+      ctx.restore();
+    }
+  },
+
+  colorOf(v) { return v.letter ? COLOR[v.letter] : COLOR.drawn; },
+
+  drawVector(v, ts) {
+    const ctx = this.ctx;
+    let ox = 0, oy = 0;
+    const sh = this.shakes[v.id];
+    if (sh) {
+      const t = (performance.now() - sh) / 400;
+      if (t < 1) { const amp = 5 * Math.sin(t * 32) * (1 - t); ox = amp; }
+      else delete this.shakes[v.id];
+    }
+    const x1 = v.sx + ox, y1 = v.sy + oy, x2 = v.ex + ox, y2 = v.ey + oy;
+    const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy);
+    if (len < 2) return;
+    const ux = dx / len, uy = dy / len;
+
+    const color = this.colorOf(v);
+    const isCopy = v.kind === 'copy';
+    const hl = Math.min(1, Math.max(.55, len / 90)) * 13;
+    const hw = hl * 0.42;
+
+    ctx.save();
+    ctx.lineCap = 'round';
+
+    /* подсветка правильного ответа / наведение */
+    const isHi = this.highlight && this.highlight.id === v.id;
+    if (isHi) {
+      ctx.shadowColor = '#10b981'; ctx.shadowBlur = 14 + 6 * Math.sin((ts || 0) / 160);
+      ctx.strokeStyle = 'rgba(16,185,129,.30)'; ctx.lineWidth = 12;
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+    } else if (this.hoverId === v.id && this.tool !== 'move') {
+      ctx.strokeStyle = 'rgba(100,116,139,.18)'; ctx.lineWidth = 12;
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+    } else if (this.hoverId === v.id) {
+      ctx.strokeStyle = 'rgba(100,116,139,.12)'; ctx.lineWidth = 12;
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+    }
+
+    /* тело вектора */
+    ctx.strokeStyle = color;
+    ctx.lineWidth = v.kind === 'given' ? 4 : 3.2;
+    ctx.globalAlpha = isCopy ? 0.88 : 1;
+    if (isCopy) ctx.setLineDash([9, 7]);
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2 - ux * hl * 0.8, y2 - uy * hl * 0.8);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    /* наконечник */
+    const px = -uy, py = ux;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(x2, y2);
+    ctx.lineTo(x2 - ux * hl + px * hw, y2 - uy * hl + py * hw);
+    ctx.lineTo(x2 - ux * hl - px * hw, y2 - uy * hl - py * hw);
+    ctx.closePath(); ctx.fill();
+
+    /* точка начала */
+    ctx.beginPath(); ctx.arc(x1, y1, 3.6, 0, 6.2832); ctx.fill();
+
+    /* ручки концов у нарисованных векторов */
+    if (v.kind === 'drawn') {
+      const hs = this.hoverEnd && this.hoverEnd.v.id === v.id && this.hoverEnd.which === 's';
+      const he = this.hoverEnd && this.hoverEnd.v.id === v.id && this.hoverEnd.which === 'e';
+      ctx.fillStyle = '#fff'; ctx.lineWidth = 2; ctx.strokeStyle = color;
+      ctx.beginPath(); ctx.arc(x1, y1, hs ? 6.5 : 5, 0, 6.2832); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.arc(x2 - ux * 3, y2 - uy * 3, he ? 6 : 4.5, 0, 6.2832); ctx.fill(); ctx.stroke();
+    }
+
+    /* подпись буквы со стрелкой */
+    if (v.letter) {
+      let nx = -uy, ny = ux;
+      if (ny > 0.01) { nx = -nx; ny = -ny; }
+      const mx = (x1 + x2) / 2 + nx * 18, my = (y1 + y2) / 2 + ny * 18;
+      this.drawVecLabel(ctx, mx, my, (v.negated ? '−' : '') + v.letter, color);
+    }
+    ctx.restore();
+  },
+
+  /* подпись вида a⃗ / −a⃗ / 2a⃗ : стрелка — только над буквой */
+  drawVecLabel(ctx, cx, cy, text, color) {
+    ctx.save();
+    ctx.font = 'italic 700 17px Georgia, "Times New Roman", serif';
+    ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
+    const letter = text[text.length - 1];
+    const prefix = text.slice(0, -1);
+    const wL = ctx.measureText(letter).width;
+    const wP = prefix ? ctx.measureText(prefix).width : 0;
+    const sx = cx - (wL + wP) / 2;
+    ctx.fillStyle = color;
+    if (prefix) ctx.fillText(prefix, sx, cy);
+    ctx.fillText(letter, sx + wP, cy);
+    /* стрелка над буквой */
+    const ay = cy - 13;
+    ctx.strokeStyle = color; ctx.lineWidth = 1.6; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(sx + wP, ay); ctx.lineTo(sx + wP + wL - 1, ay); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(sx + wP + wL + 1.5, ay);
+    ctx.lineTo(sx + wP + wL - 3.2, ay - 2.6);
+    ctx.lineTo(sx + wP + wL - 3.2, ay + 2.6);
+    ctx.closePath(); ctx.fillStyle = color; ctx.fill();
+    ctx.restore();
+  },
+
+  /* эталонное построение: полупрозрачные векторы с номерами шагов */
+  drawGhost(g) {
+    const ctx = this.ctx;
+    const x1 = g.sx, y1 = g.sy, x2 = g.ex, y2 = g.ey;
+    const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy);
+    if (len < 2) return;
+    const ux = dx / len, uy = dy / len;
+    const color = g.color;
+    const hl = 14, hw = 6;
+
+    ctx.save();
+    ctx.globalAlpha = g.kind === 'result' ? 0.95 : 0.55;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = color; ctx.fillStyle = color;
+    ctx.lineWidth = g.kind === 'result' ? 4.5 : 3.4;
+    if (g.kind !== 'result') ctx.setLineDash([10, 7]);
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2 - ux * hl * 0.8, y2 - uy * hl * 0.8); ctx.stroke();
+    ctx.setLineDash([]);
+    const px = -uy, py = ux;
+    ctx.beginPath();
+    ctx.moveTo(x2, y2);
+    ctx.lineTo(x2 - ux * hl + px * hw, y2 - uy * hl + py * hw);
+    ctx.lineTo(x2 - ux * hl - px * hw, y2 - uy * hl - py * hw);
+    ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.arc(x1, y1, 3.4, 0, 6.2832); ctx.fill();
+
+    if (g.badge) {
+      const bx = x1 - ux * 20, by = y1 - uy * 20;
+      ctx.globalAlpha = .95;
+      ctx.beginPath(); ctx.arc(bx, by, 9.5, 0, 6.2832);
+      ctx.fillStyle = '#fff'; ctx.fill();
+      ctx.lineWidth = 2.2; ctx.strokeStyle = color; ctx.stroke();
+      ctx.fillStyle = color;
+      ctx.font = '700 12px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(String(g.badge), bx, by + 0.5);
+      ctx.textBaseline = 'alphabetic';
+    }
+    if (g.label) {
+      let nx = -uy, ny = ux;
+      if (ny > 0.01) { nx = -nx; ny = -ny; }
+      const mx = (x1 + x2) / 2 + nx * 20, my = (y1 + y2) / 2 + ny * 20;
+      if (g.kind === 'result') {
+        ctx.font = '700 13px sans-serif'; ctx.textAlign = 'center';
+        ctx.fillStyle = COLOR.gold;
+        ctx.fillText(g.label, mx, my + 4);
+      } else {
+        this.drawVecLabel(ctx, mx, my, g.label, color);
+      }
+    }
+    ctx.restore();
+  }
+};
+
+/* безопасный доступ к localStorage (file:// тоже работает) */
+function localStorage_get(key) {
+  try { return localStorage.getItem(key); } catch (e) { return null; }
+}
+function localStorage_set(key, val) {
+  try { localStorage.setItem(key, val); } catch (e) { /* ignore */ }
+}
+
+/* ============================================================
+   ИНТЕРФЕЙС И ИГРОВОЙ ПРОЦЕСС
+   ============================================================ */
+function showScreen(name) {
+  Game.state.screen = name;
+  ['start', 'quiz', 'end'].forEach(s => $('screen-' + s).classList.toggle('active', s === name));
+}
+
+function setFeedback(kind, head, bodyHtml) {
+  $('feedback').innerHTML =
+    `<div class="fb ${kind}"><div class="fb-head">` +
+    `<svg class="ic"><use href="#${kind === 'ok' ? 'i-check' : 'i-x'}"/></svg>` +
+    `<span>${head}</span></div>${bodyHtml}</div>`;
+}
+
+let toastTimer = null;
+function toast(msg) {
+  const el = $('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2300);
+}
+
+function updateUndoBtn() { $('btn-undo').disabled = !Board.undoStack.length; }
+
+function updateDots() {
+  const dots = $('q-dots');
+  if (!dots.children.length)
+    QUESTIONS.forEach((_, i) => {
+      const d = document.createElement('span');
+      d.className = 'dot'; d.textContent = i + 1;
+      dots.appendChild(d);
+    });
+  [...dots.children].forEach((d, i) => {
+    const done = !!Game.state.results[i];
+    d.classList.toggle('done', done);
+    d.classList.toggle('cur', !done && i === Game.state.idx);
+  });
+}
+
+function updateHintBtn() {
+  const q = Game.q;
+  const left = q ? q.cfg.hints.length - q.hintsShown : 0;
+  $('btn-hint').innerHTML = `<svg class="ic"><use href="#i-bulb"/></svg>Подсказка${left > 0 ? ' (' + left + ')' : ''}`;
+  $('btn-hint').disabled = !q || left <= 0;
+}
+
+/* ---------- Эталонное построение (подсказка-образец на доске) ---------- */
+
+/* ищем старт цепочки так, чтобы всё построение осталось на доске
+   и было максимально близко к центру */
+function pickStart(cumPts) {
+  let best = null, bestD = 1e9;
+  for (let X = 3; X <= COLS - 3; X += 1.5)
+    for (let Y = 2.5; Y <= ROWS - 2.5; Y += 1.5) {
+      let ok = true;
+      for (const p of cumPts) {
+        if (X + p.x < 1 || X + p.x > COLS - 1 || Y + p.y < 1 || Y + p.y > ROWS - 1) { ok = false; break; }
+      }
+      if (!ok) continue;
+      let cx = 0, cy = 0;
+      cumPts.forEach(p => { cx += X + p.x; cy += Y + p.y; });
+      cx /= cumPts.length; cy /= cumPts.length;
+      const d = Math.hypot(cx - COLS / 2, cy - ROWS / 2);
+      if (d < bestD) { bestD = d; best = { x: X, y: Y }; }
+    }
+  return best || { x: COLS / 2, y: ROWS / 2 };
+}
+
+function buildSolution(q) {
+  const items = [];
+  const expr = q.cfg.expr;
+  const G = (x, y) => ({ x: x * GRID, y: y * GRID });
+
+  if (expr.length === 1 && expr[0][1] === 1) {
+    /* равный вектор: образец в свободном месте */
+    const a = q.vals[expr[0][0]];
+    const P = pickStart([{ x: 0, y: 0 }, a]);
+    const S = G(P.x + 1.5, P.y + 1.5);
+    items.push({
+      ...S, ex: S.x + a.x * GRID, ey: S.y + a.y * GRID,
+      color: COLOR.gold, kind: 'result', label: 'результат'
+    });
+    return items;
+  }
+
+  if (expr.length === 1) {
+    /* умножение на число: исходный + результат из одной точки */
+    const [L, k] = expr[0];
+    const a = q.vals[L], t = vScale(a, k);
+    const P = pickStart([{ x: 0, y: 0 }, a, t]);
+    const S = G(P.x, P.y);
+    items.push({
+      ...S, ex: S.x + a.x * GRID, ey: S.y + a.y * GRID,
+      color: COLOR[L], kind: 'term', badge: 1, label: termLabel(L, 1)
+    });
+    items.push({
+      ...S, ex: S.x + t.x * GRID, ey: S.y + t.y * GRID,
+      color: COLOR.gold, kind: 'result', label: 'результат'
+    });
+    return items;
+  }
+
+  /* цепочка слагаемых + замыкающий золотой вектор */
+  const cums = [{ x: 0, y: 0 }];
+  expr.forEach(([L, k]) => {
+    cums.push(vAdd(cums[cums.length - 1], vScale(q.vals[L], k)));
+  });
+  const P = pickStart(cums);
+  expr.forEach(([L, k], i) => {
+    const st = cums[i], en = cums[i + 1];
+    items.push({
+      ...G(P.x + st.x, P.y + st.y),
+      ex: (P.x + en.x) * GRID, ey: (P.y + en.y) * GRID,
+      color: COLOR[L], kind: 'term', badge: i + 1, label: termLabel(L, k)
+    });
+  });
+  const st = cums[0], en = cums[cums.length - 1];
+  items.push({
+    ...G(P.x + st.x, P.y + st.y),
+    ex: (P.x + en.x) * GRID, ey: (P.y + en.y) * GRID,
+    color: COLOR.gold, kind: 'result', label: 'результат'
+  });
+  return items;
+}
+
+/* ============================================================
+   ИГРА
+   ============================================================ */
+const Game = {
+  state: { screen: 'start', idx: 0, score: 0, results: [] },
+  q: null,
+
+  start() {
+    this.state = { screen: 'quiz', idx: 0, score: 0, results: [] };
+    showScreen('quiz');
+    $('score-val').textContent = '0';
+    this.showQuestion(0);
+  },
+
+  showQuestion(i) {
+    this.state.idx = i;
+    const cfg = QUESTIONS[i];
+    const inst = instantiate(cfg);
+    this.q = {
+      cfg, given: inst.given, vals: inst.vals, target: inst.target,
+      attempts: 0, hintsShown: 0, solved: false, pts: 0, solutionShown: false
+    };
+    Board.reset(inst.given);
+    $('q-num').textContent = i + 1;
+    $('q-badge').textContent = cfg.badge;
+    $('q-title').textContent = cfg.title;
+    $('q-text').innerHTML = cfg.text;
+    $('hints').innerHTML = '';
+    $('feedback').innerHTML = '';
+    this.updateTools();
+    Board.setTool('move');
+    updateHintBtn();
+    updateDots();
+  },
+
+  updateTools() {
+    const names = { move: 'перемещать', draw: 'рисовать', copy: 'копировать', negate: 'разворачивать', erase: 'удалять' };
+    const icons = { move: 'i-move', draw: 'i-pencil', copy: 'i-copy', negate: 'i-flip', erase: 'i-trash' };
+    document.querySelectorAll('.tool-btn').forEach(b => {
+      b.classList.toggle('disabled', this.q.cfg.tools[b.dataset.tool] === 0);
+    });
+    const parts = TOOLS
+      .filter(t => this.q.cfg.tools[t])
+      .map(t => `<span class="t"><svg class="ic"><use href="#${icons[t]}"/></svg>${names[t]}</span>`);
+    $('q-tools').innerHTML = 'Инструменты задания: ' + parts.join(' · ');
+  },
+
+  check() {
+    const q = this.q;
+    if (!q || q.solved || this.state.screen !== 'quiz') return;
+    const stud = Board.vectors.filter(v => v.kind !== 'given');
+    if (!stud.length) {
+      toast('Сначала постройте ответ — например, нарисуйте вектор инструментом «Рисовать»');
+      return;
+    }
+    q.attempts++;
+    const match = findMatch(stud, q.target);
+    if (match) { this.solve(match); return; }
+
+    SFX.play('fail');
+    const msg = diagnose(stud, q) || 'Попробуйте ещё раз.';
+    const solBtn = q.attempts >= 3
+      ? `<div class="fb-actions"><button class="btn small" data-act="solution">Показать решение (2 очка)</button></div>`
+      : '';
+    setFeedback('bad', `Пока не получилось — попытка ${q.attempts}`, `<div>${msg}</div>${solBtn}`);
+    if (q.attempts >= 2) $('btn-hint').classList.add('suggest');
+  },
+
+  solve(match) {
+    const q = this.q;
+    q.solved = true;
+    q.pts = [10, 7, 5][Math.min(q.attempts, 3) - 1];
+    this.state.score += q.pts;
+    this.state.results[this.state.idx] = { attempts: q.attempts, pts: q.pts, solution: false, hints: q.hintsShown };
+    $('score-val').textContent = this.state.score;
+    const chip = $('score-chip');
+    chip.classList.remove('pop'); void chip.offsetWidth; chip.classList.add('pop');
+
+    Board.highlight = { id: match.id };
+    Board.burst((match.sx + match.ex) / 2, (match.sy + match.ey) / 2,
+      this.state.idx === QUESTIONS.length - 1 ? 130 : 70);
+    SFX.play('success');
+    $('btn-hint').classList.remove('suggest');
+
+    const chainMsg = detectChainMessage(q);
+    const last = this.state.idx === QUESTIONS.length - 1;
+    const actions = `<div class="fb-actions">
+        <button class="btn small primary" data-act="next">${last ? 'Показать результаты' : 'Далее'}<svg class="ic"><use href="#i-arrow-r"/></svg></button>
+        <button class="linklike" data-act="ghost">показать эталонное построение</button>
+      </div>`;
+    setFeedback('ok', `Верно! +${q.pts} очков`,
+      `<div>${q.cfg.success}${chainMsg ? `<p class="chain">${chainMsg}</p>` : ''}</div>${actions}`);
+    updateDots();
+  },
+
+  showSolution() {
+    const q = this.q;
+    if (!q || q.solved) return;
+    q.solved = true; q.solutionShown = true; q.pts = 2;
+    this.state.score += 2;
+    this.state.results[this.state.idx] = { attempts: q.attempts, pts: 2, solution: true, hints: q.hintsShown };
+    $('score-val').textContent = this.state.score;
+    Board.ghost = buildSolution(q);
+    SFX.play('pop');
+    const last = this.state.idx === QUESTIONS.length - 1;
+    setFeedback('ok', 'Показано эталонное построение (+2 очка)',
+      `<div>На доске появился образец: пунктирные векторы с номерами — шаги построения, золотой вектор — искомый результат. Разберите шаги и нажмите «Далее».</div>
+       <div class="fb-actions"><button class="btn small primary" data-act="next">${last ? 'Показать результаты' : 'Далее'}<svg class="ic"><use href="#i-arrow-r"/></svg></button></div>`);
+    updateDots();
+  },
+
+  revealHint() {
+    const q = this.q;
+    if (!q || q.hintsShown >= q.cfg.hints.length) { toast('Подсказки закончились — Вы справитесь!'); return; }
+    const item = document.createElement('div');
+    item.className = 'hint-item';
+    item.innerHTML = `<svg class="ic"><use href="#i-bulb"/></svg><span>${q.cfg.hints[q.hintsShown]}</span>`;
+    $('hints').appendChild(item);
+    q.hintsShown++;
+    SFX.play('click');
+    updateHintBtn();
+    $('btn-hint').classList.remove('suggest');
+  },
+
+  next() {
+    if (!this.q || !this.q.solved) return;
+    if (this.state.idx < QUESTIONS.length - 1) this.showQuestion(this.state.idx + 1);
+    else this.finish();
+  },
+
+  finish() {
+    showScreen('end');
+    const sc = this.state.score;
+    let grade, msg;
+    if (sc >= 90) { grade = 'Отлично! Оценка 5'; msg = 'Вы уверенно владеете геометрическим методом: правило треугольника, противоположные векторы и умножение на число — всё покорилось.'; }
+    else if (sc >= 70) { grade = 'Хорошо! Оценка 4'; msg = 'Крепкий результат! Ещё немного практики — и правила будут отскакивать от кончика карандаша.'; }
+    else if (sc >= 50) { grade = 'Неплохо! Оценка 3'; msg = 'Основы освоены, но повторите правило треугольника и умножение вектора на число — загляните в Справочник.'; }
+    else { grade = 'Оценка 2'; msg = 'Не расстраивайтесь: откройте Справочник, разберите эталонные построения и попробуйте ещё раз — геометрия любит упорных.'; }
+    $('end-grade').textContent = grade;
+    $('end-grade').style.color = sc >= 70 ? 'var(--ok)' : (sc >= 50 ? 'var(--gold)' : 'var(--bad)');
+    $('end-msg').textContent = msg;
+
+    let html = '<div class="krow head"><span>№</span><span>Задание</span><span class="att">Попытки</span><span class="pts">Очки</span></div>';
+    QUESTIONS.forEach((cfg, i) => {
+      const r = this.state.results[i] || { attempts: '—', pts: 0, solution: false };
+      html += `<div class="krow"><span>${i + 1}</span><span>${cfg.title}${r.solution ? ' <span style="color:var(--muted)">(по образцу)</span>' : ''}</span><span class="att">${r.attempts}</span><span class="pts">${r.pts}</span></div>`;
+    });
+    $('end-table').innerHTML = html;
+
+    const best = +(localStorage_get('vectorQuiz.best') || 0);
+    if (sc > best) {
+      localStorage_set('vectorQuiz.best', String(sc));
+      $('end-best').textContent = `Новый лучший результат: ${sc} из 100!`;
+    } else {
+      $('end-best').textContent = best ? `Лучший результат: ${best} из 100` : '';
+    }
+
+    const t0 = performance.now();
+    const tick = now => {
+      const t = Math.min(1, (now - t0) / 900);
+      $('end-score').textContent = Math.round(sc * t * (2 - t));
+      if (t < 1) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+    $('ring-fill').style.strokeDashoffset = String(364.4 * (1 - sc / 100));
+    SFX.play('fanfare');
+  }
+};
+
+/* ============================================================
+   ИНИЦИАЛИЗАЦИЯ И ОБРАБОТЧИКИ
+   ============================================================ */
+function init() {
+  Board.init();
+
+  const best = +(localStorage_get('vectorQuiz.best') || 0);
+  if (best) $('start-best').textContent = `Ваш лучший результат: ${best} из 100`;
+
+  $('btn-start').addEventListener('click', () => { SFX.ensure(); SFX.play('click'); Game.start(); });
+  $('btn-restart').addEventListener('click', () => { SFX.play('click'); Game.start(); });
+
+  document.querySelectorAll('.tool-btn').forEach(b =>
+    b.addEventListener('click', () => Board.setTool(b.dataset.tool)));
+
+  $('btn-check').addEventListener('click', () => Game.check());
+  $('btn-hint').addEventListener('click', () => Game.revealHint());
+  $('btn-undo').addEventListener('click', () => { if (Game.q && Game.q.solved) return; Board.undo(); });
+  $('btn-clear').addEventListener('click', () => {
+    if (Game.q && Game.q.solved) return;
+    Board.clearAll();
+    toast('Доска очищена');
+  });
+
+  $('feedback').addEventListener('click', e => {
+    const b = e.target.closest('[data-act]');
+    if (!b) return;
+    const act = b.dataset.act;
+    if (act === 'next') Game.next();
+    if (act === 'solution') Game.showSolution();
+    if (act === 'ghost') Board.ghost = Board.ghost ? null : buildSolution(Game.q);
+  });
+
+  $('snap').addEventListener('change', e => {
+    Board.snapOn = e.target.checked;
+    localStorage_set('vectorQuiz.snap', Board.snapOn ? '1' : '0');
+  });
+
+  $('btn-mute').addEventListener('click', () => {
+    SFX.on = !SFX.on;
+    $('ic-vol-on').classList.toggle('hidden', !SFX.on);
+    $('ic-vol-off').classList.toggle('hidden', SFX.on);
+    if (SFX.on) { SFX.ensure(); SFX.play('click'); }
+  });
+
+  $('btn-theory').addEventListener('click', () => $('modal-theory').classList.add('open'));
+  $('modal-theory').addEventListener('click', e => {
+    if (e.target.closest('[data-close]')) $('modal-theory').classList.remove('open');
+  });
+
+  document.addEventListener('keydown', e => {
+    if ($('modal-theory').classList.contains('open')) {
+      if (e.key === 'Escape') $('modal-theory').classList.remove('open');
+      return;
+    }
+    if (e.ctrlKey || e.metaKey) {
+      if (e.code === 'KeyZ' && Game.state.screen === 'quiz') {
+        e.preventDefault();
+        if (!(Game.q && Game.q.solved)) Board.undo();
+      }
+      return;
+    }
+    if (Game.state.screen !== 'quiz') return;
+    if (e.code === 'Enter') {
+      e.preventDefault();
+      if (Game.q && Game.q.solved) Game.next(); else Game.check();
+    }
+    if (e.code === 'Escape') Board.setTool('move');
+    const map = { Digit1: 'move', Digit2: 'draw', Digit3: 'copy', Digit4: 'negate', Digit5: 'erase' };
+    if (map[e.code]) Board.setTool(map[e.code]);
+    if (e.code === 'KeyH') Game.revealHint();
+    if (e.code === 'KeyM') $('btn-mute').click();
+    if (e.code === 'KeyT') $('btn-theory').click();
+  });
+}
+
+/* Сбор ошибок и доступ для отладки из консоли (window.VectorQuiz) */
+window.__errors = [];
+window.addEventListener('error', e => window.__errors.push(String(e.message)));
+window.VectorQuiz = { Game, Board, QUESTIONS, FEATURES, vecEq, valOf };
+
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+else init();
+</script>
+</body>
+</html>
